@@ -1,7 +1,5 @@
 
-
-    
-    import os
+import os
 import json
 import openai
 import urllib.request
