@@ -1,59 +1,79 @@
 
-import openai, os, json
-import urllib.request
-from flask import Flask, request
+import os
+import requests
+from flask import Flask, request, jsonify
+from openai import OpenAI
 
-# Configuração da sua "Mente de Elite"
 app = Flask(__name__)
-openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-@app.route("/webhook", methods=["POST", "GET"])
+# Configurações via Variáveis de Ambiente no Render
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE_ID")
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
+
+client = OpenAI(api_key=OPENAI_KEY)
+
+@app.route('/', methods=['GET'])
+def home():
+    return "O Império de Silício está Online! 🏛️🤖", 200
+
+@app.route('/webhook', methods=['POST'])
 def webhook():
-    # 1. Pega TUDO o que a Z-API mandar
-    dados = request.get_json(silent=True) or request.form.to_dict()
-    print(f"🚨 DADOS RECEBIDOS DA Z-API: {dados}")
+    dados = request.get_json()
     
-    # 2. Tenta encontrar o telefone e o texto do cliente
-    telefone_cliente = dados.get("phone")
-    
-    mensagem_cliente = ""
-    if "text" in dados and isinstance(dados["text"], dict):
-        mensagem_cliente = dados["text"].get("message", "")
-    
-    from_me = dados.get("fromMe", False)
-    
-    # Se faltar algum dado importante ou for mensagem sua mesmo, ignora
-    if not telefone_cliente or not mensagem_cliente or from_me:
-        return "OK", 200
-        
-    print(f"🤖 MENSAGEM LIDA DE {telefone_cliente}: {mensagem_cliente}")
-    
-    # 3. O Cérebro: Agente processa a resposta usando IA
-    resposta_ia = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "Você é o assistente de elite do Império de Silício. Seja altamente profissional e rápido nas respostas."},
-            {"role": "user", "content": mensagem_cliente}
-        ]
-    )
-    texto_resposta = resposta_ia.choices[0].message.content
-    print(f"✅ RESPOSTA GERADA: {texto_resposta}")
+    # Verifica se é uma mensagem recebida
+    if not dados:
+        return "Sem dados", 200
 
-    # 4. A Boca: Envia de volta pro Z-API
-    instancia = os.environ.get("ZAPI_INSTANCE_ID")
-    token = os.environ.get("ZAPI_TOKEN")
-    url_zapi = f"https://api.z-api.io/instances/{instancia}/token/{token}/send-text"
-
-    corpo_envio = json.dumps({"phone": telefone_cliente, "message": texto_resposta}).encode('utf-8')
-    req = urllib.request.Request(url_zapi, data=corpo_envio, headers={'Content-Type': 'application/json'})
+    # Pega o número e o texto da mensagem
+    remote_jid = dados.get("phone", "")
+    message_text = dados.get("text", {}).get("message", "")
+    is_group = dados.get("isGroup", False)
     
+    # --- AJUSTE DE SÓCIO: LIMPEZA DO NÚMERO ---
+    # Remove o @c.us ou @s.whatsapp.net para evitar Erro 400 na Z-API
+    clean_phone = remote_jid.split("@")[0]
+
+    # Se for grupo ou mensagem vazia, ignora
+    if is_group or not message_text:
+        return "Ignorado", 200
+
+    print(f"📩 MENSAGEM LIDA DE {clean_phone}: {message_text}")
+
     try:
-        urllib.request.urlopen(req)
-        print("🚀 ENVIADO COM SUCESSO PRO WHATSAPP!")
+        # 1. Chamar o Cérebro (OpenAI)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Você é o Agente de Elite do Império de Silício. Responda de forma curta, direta e persuasiva, focada em ajudar o cliente e vender o e-book de R$ 47 sobre IA."},
+                {"role": "user", "content": message_text}
+            ]
+        )
+        resposta_ai = response.choices[0].message.content
+
+        # 2. Enviar a resposta via Z-API
+        url_zapi = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
+        payload = {
+            "phone": clean_phone,
+            "message": resposta_ai
+        }
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        envio = requests.post(url_zapi, json=payload, headers=headers)
+        
+        if envio.status_code == 200 or envio.status_code == 201:
+            print(f"✅ RESPOSTA ENVIADA PARA {clean_phone}")
+        else:
+            print(f"❌ ERRO Z-API ({envio.status_code}): {envio.text}")
+
     except Exception as e:
-        print(f"❌ ERRO AO ENVIAR PRA Z-API: {e}")
+        print(f"⚠️ ERRO NO PROCESSAMENTO: {e}")
 
     return "OK", 200
 
-if __name__ == "__main__":
-    app.run(port=5000)
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
