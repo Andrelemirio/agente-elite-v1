@@ -1,23 +1,18 @@
 
 import os
-import json
-import openai
-import urllib.request
+import requests
 from flask import Flask, request
 
 app = Flask(__name__)
 
-# Configurações via Variáveis de Ambiente no Render
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-ZAPI_INSTANCE = os.getenv("ZAPI_INSTANCE_ID")
-ZAPI_TOKEN = os.getenv("ZAPI_TOKEN")
-
-# Configuração da chave para a versão que você tem instalada
-openai.api_key = OPENAI_KEY
+# Pegamos as chaves e limpamos espaços invisíveis automaticamente
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE_ID", "").strip()
+ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "").strip()
 
 @app.route('/', methods=['GET'])
 def home():
-    return "O Império de Silício está Online! 🏛️🤖", 200
+    return "O Império de Silício está Online e Vigilante! 🏛️🤖", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -25,47 +20,51 @@ def webhook():
     if not dados:
         return "Sem dados", 200
 
-    # Pega o número e limpa para evitar Erro 400
     remote_jid = dados.get("phone", "")
     message_text = dados.get("text", {}).get("message", "")
-    is_group = dados.get("isGroup", False)
     
-    # --- LIMPEZA DO NÚMERO ---
+    # Limpeza do número
     clean_phone = remote_jid.split("@")[0]
 
-    if is_group or not message_text:
+    if not message_text:
         return "Ignorado", 200
 
     print(f"📩 MENSAGEM LIDA DE {clean_phone}: {message_text}")
 
     try:
-        # Chamada usando a sintaxe compatível com seu ambiente atual
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Você é o Agente de Elite do Império de Silício. Responda de forma curta, direta e persuasiva, focada em vender o e-book de R$ 47 sobre IA."},
+        # 1. Chamar a OpenAI (Cérebro)
+        headers_openai = {"Authorization": f"Bearer {OPENAI_KEY}"}
+        payload_openai = {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": "Você é o Agente de Elite do Império de Silício. Seja curto e direto."},
                 {"role": "user", "content": message_text}
             ]
-        )
-        resposta_ai = response.choices[0].message.content
+        }
+        
+        res_ai = requests.post("https://api.openai.com/v1/chat/completions", json=payload_openai, headers=headers_openai)
+        resposta_ai = res_ai.json()['choices'][0]['message']['content']
+        print(f"🤖 AI RESPONDEU: {resposta_ai}")
 
-        # Enviar a resposta via Z-API usando urllib (mais estável no seu caso)
+        # 2. Enviar via Z-API (Voz)
         url_zapi = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
-        corpo_envio = json.dumps({
+        payload_zapi = {
             "phone": clean_phone,
             "message": resposta_ai
-        }).encode('utf-8')
+        }
         
-        req = urllib.request.Request(url_zapi, data=corpo_envio, headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req) as response_zapi:
-            if response_zapi.getcode() in [200, 201]:
-                print(f"✅ RESPOSTA ENVIADA PARA {clean_phone}")
+        envio = requests.post(url_zapi, json=payload_zapi)
+        
+        if envio.status_code in [200, 201]:
+            print(f"✅ SUCESSO: Resposta enviada para {clean_phone}")
+        else:
+            print(f"❌ ERRO NA Z-API ({envio.status_code}): {envio.text}")
 
     except Exception as e:
-        print(f"⚠️ ERRO NO PROCESSAMENTO: {e}")
+        print(f"⚠️ ERRO GERAL NO PROCESSAMENTO: {e}")
 
     return "OK", 200
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
