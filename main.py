@@ -1,10 +1,10 @@
-import openai
+import openai, os
 from flask import Flask, request
 
 # Configuração da sua "Mente de Elite"
 app = Flask(__name__)
 # Aqui no futuro colocaremos a tua chave secreta de forma segura
-openai.api_key = "SUA_CHAVE_AQUI"
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
