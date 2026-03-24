@@ -12,9 +12,9 @@ ZAPI_TOKEN = str(os.environ.get("ZAPI_TOKEN", "")).strip()
 ZAPI_CLIENT_TOKEN = str(os.environ.get("ZAPI_CLIENT_TOKEN", "")).strip()
 DATABASE_URL = str(os.environ.get("DATABASE_URL", "")).strip()
 
-# Função para conectar ao Banco de Dados PostgreSQL
+# Função para conectar ao Banco de Dados PostgreSQL (Com trava de segurança SSL)
 def conectar_banco():
-    return psycopg2.connect(DATABASE_URL)
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 # Criar a estrutura do banco automaticamente se não existir
 def inicializar_banco():
