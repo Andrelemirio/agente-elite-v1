@@ -1,105 +1,74 @@
 
-import os, requests, sqlite3, json
-from flask import Flask, request
-from datetime import datetime
-
-app = Flask(__name__)
-
-# Configurações de Ambiente
-OPENAI_KEY = str(os.environ.get("OPENAI_API_KEY", "")).strip()
-ZAPI_INSTANCE = str(os.environ.get("ZAPI_INSTANCE_ID", "")).strip()
-ZAPI_TOKEN = str(os.environ.get("ZAPI_TOKEN", "")).strip()
-ZAPI_CLIENT_TOKEN = str(os.environ.get("ZAPI_CLIENT_TOKEN", "")).strip()
-DB_NAME = "clinica_elite.db"
-
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS historico 
-        (id INTEGER PRIMARY KEY AUTOINCREMENT, telefone TEXT, msg_cliente TEXT, msg_ia TEXT, data TIMESTAMP)''')
-    conn.commit()
-    conn.close()
-
-def buscar_memoria(telefone):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT msg_cliente, msg_ia FROM historico WHERE telefone = ? ORDER BY id DESC LIMIT 4", (telefone,))
-    rows = cursor.fetchall()
-    conn.close()
-    return "\n".join([f"Paciente: {r[0]}\nAgente: {r[1]}" for r in reversed(rows)])
-
-def salvar_conversa(telefone, msg, resp):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO historico (telefone, msg_cliente, msg_ia, data) VALUES (?, ?, ?, ?)",
-                   (telefone, msg, resp, datetime.now()))
-    conn.commit()
-    conn.close()
-
-init_db()
-
-@app.route('/', methods=['GET'])
-def home():
-    return "Império de Silício Online! 🏛️🤖", 200
-
 @app.route('/webhook', methods=['POST'])
 def webhook():
     dados = request.get_json()
     if not dados: return "Sem dados", 200
 
-    # 🚨 FILTRO DE ELITE: Só responde se for uma mensagem recebida e se tiver texto
-    # Isso evita as respostas duplas e o consumo desnecessário de créditos
-    if dados.get("type") != "ReceivedMessage" or "text" not in dados:
-        return "Evento ignorado", 200
+    # 1. SEGURANÇA: Só responde se for mensagem RECEBIDA (não a que o robô envia)
+    if dados.get("fromMe") is True: 
+        return "Ignorado: Mensagem própria", 200
 
     remote_jid = dados.get("phone", "")
-    message_text = dados.get("text", {}).get("message", "")
-    
-    # Ignora mensagens enviadas pelo próprio robô
-    if not remote_jid or not message_text or dados.get("fromMe", False): 
-        return "Ignorado", 200
+    # Tratando diferentes formatos de entrada da Z-API
+    message_text = ""
+    if "text" in dados and "message" in dados["text"]:
+        message_text = dados["text"]["message"]
+    elif "momentsMessage" in dados: # Caso seja outro formato de msg
+        message_text = dados.get("text", {}).get("message", "")
+
+    if not remote_jid or not message_text: 
+        return "Sem conteúdo para processar", 200
 
     clean_phone = remote_jid.split("@")[0]
-    memoria = buscar_memoria(clean_phone)
+    print(f"📩 MÉDICO VIRTUAL: Processando msg de {clean_phone}")
 
     try:
-        # 🧠 IA COM PERSONALIDADE DE FERRO: Focada 100% em Saúde e Agendamento
+        # 2. CONFIGURANDO A AUTORIDADE DO ESPECIALISTA
         headers_openai = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
-        prompt_sistema = (
-            "Você é o Especialista de Elite da Clínica de Saúde. "
-            "Sua missão única é cuidar da saúde dos pacientes e agendar consultas. "
-            "REGRAS CRÍTICAS:\n"
-            "1. RESPONDA TUDO EM APENAS UM PARÁGRAFO CURTO.\n"
-            "2. Nunca peça ou empreste dinheiro. Se o assunto fugir de saúde, diga que seu foco é o bem-estar médico e tente voltar para o agendamento.\n"
-            "3. Se o paciente estiver confuso, acolha-o e mostre autoridade médica.\n"
-            f"HISTÓRICO:\n{memoria}"
-        )
-        
         payload_openai = {
             "model": "gpt-3.5-turbo",
             "messages": [
-                {"role": "system", "content": prompt_sistema},
+                {
+                    "role": "system", 
+                    "content": (
+                        "Você é o Agente de Elite de Atendimento Clínico. "
+                        "Sua postura é: Sério, Empático, Altamente Profissional e Focado em Saúde. "
+                        "Regra de Ouro: Sua missão é transformar dúvidas em AGENDAMENTOS. "
+                        "Se o cliente fugir do assunto (ex: dinheiro, piadas), você deve dizer: "
+                        "'Compreendo, mas meu foco aqui é garantir sua saúde e o melhor atendimento na nossa clínica. "
+                        "Como posso te ajudar com sua consulta hoje?' "
+                        "Nunca responda mais de 3 frases. Seja direto."
+                    )
+                },
                 {"role": "user", "content": message_text}
             ]
         }
+        
+        # Chamada para OpenAI
         res_ai = requests.post("https://api.openai.com/v1/chat/completions", json=payload_openai, headers=headers_openai)
+        
+        # LOG PARA DEBUG (Ver no Render se a OpenAI respondeu)
+        if res_ai.status_code != 200:
+            print(f"❌ ERRO OPENAI: {res_ai.text}")
+            return "Erro na IA", 200
+            
         resposta_ai = res_ai.json()['choices'][0]['message']['content']
 
-        salvar_conversa(clean_phone, message_text, resposta_ai)
-
-        # Envio Blindado
+        # 3. ENVIO PARA Z-API (Com tratamento de erro)
         url_zapi = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
-        headers_zapi = {"Content-Type": "application/json", "Client-Token": ZAPI_CLIENT_TOKEN}
-        payload_zapi = {"phone": clean_phone, "message": resposta_ai}
+        headers_zapi = {
+            "Content-Type": "application/json",
+            "Client-Token": ZAPI_CLIENT_TOKEN
+        }
+        payload_zapi = {
+            "phone": clean_phone,
+            "message": resposta_ai
+        }
         
-        requests.post(url_zapi, json=payload_zapi, headers=headers_zapi)
-        print(f"✅ SUCESSO: Respondido para {clean_phone}")
+        envio = requests.post(url_zapi, json=payload_zapi, headers=headers_zapi)
+        print(f"✅ STATUS ENVIO Z-API: {envio.status_code}")
 
     except Exception as e:
-        print(f"⚠️ ERRO GERAL: {e}")
+        print(f"⚠️ FALHA CRÍTICA NO CÓDIGO: {e}")
 
     return "OK", 200
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
