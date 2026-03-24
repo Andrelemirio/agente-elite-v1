@@ -4,7 +4,6 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Configurações do Render (Limpando as chaves)
 OPENAI_KEY = str(os.environ.get("OPENAI_API_KEY", "")).strip()
 ZAPI_INSTANCE = str(os.environ.get("ZAPI_INSTANCE_ID", "")).strip()
 ZAPI_TOKEN = str(os.environ.get("ZAPI_TOKEN", "")).strip()
@@ -12,50 +11,67 @@ ZAPI_CLIENT_TOKEN = str(os.environ.get("ZAPI_CLIENT_TOKEN", "")).strip()
 
 @app.route('/', methods=['GET'])
 def home():
-    # Isso aqui resolve o erro de "No open HTTP ports" no Render
     return "Império de Silício Online 🏛️", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    dados = request.get_json()
-    if not dados: return "Sem dados", 200
+    print("🚨 ALERTA: O WEBHOOK FOI ACIONADO!")
+    
+    try:
+        # Pega os dados brutos e força a leitura
+        dados = request.get_json(force=True)
+        print(f"📦 DADOS DA Z-API: {dados}")
+    except Exception as e:
+        print(f"❌ ERRO AO LER A MENSAGEM: {e}")
+        return "OK", 200
 
-    # 1. TRAVA ANTI-LOOP (Essencial para não duplicar e não gastar dinheiro à toa)
+    if not dados: return "OK", 200
+
     if dados.get("fromMe") is True:
-        return "Mensagem do próprio bot ignorada", 200
+        print("🛑 Mensagem enviada por você mesmo. Ignorada para evitar loop.")
+        return "OK", 200
 
     remote_jid = dados.get("phone", "")
-    message_text = dados.get("text", {}).get("message", "")
     
-    if not remote_jid or not message_text: 
-        return "Mensagem vazia", 200
+    # Tenta pegar o texto de várias formas possíveis
+    message_text = ""
+    if "text" in dados and isinstance(dados["text"], dict):
+        message_text = dados["text"].get("message", "")
+    elif "text" in dados and isinstance(dados["text"], str):
+         message_text = dados["text"]
+    elif "message" in dados:
+         message_text = dados["message"]
 
-    clean_phone = remote_jid.split("@")[0]
-    print(f"📩 Nova mensagem de {clean_phone}: {message_text}")
+    clean_phone = remote_jid.split("@")[0] if remote_jid else "Desconhecido"
+    print(f"📲 DE: {clean_phone} | MENSAGEM: {message_text}")
+
+    if not message_text:
+        print("⚠️ A mensagem não tem texto (pode ser áudio ou imagem). O robô vai ignorar.")
+        return "OK", 200
 
     try:
-        # 2. IA com POSTURA DE ESPECIALISTA EM CLÍNICA
+        print("🧠 Chamando a OpenAI (Agente de Elite)...")
         headers_openai = {"Authorization": f"Bearer {OPENAI_KEY}"}
         payload_openai = {
             "model": "gpt-3.5-turbo",
             "messages": [
                 {
                     "role": "system", 
-                    "content": (
-                        "Você é o Agente de Elite da Clínica. Sua postura é séria, profissional e focada em saúde. "
-                        "Sua única missão é levar o cliente ao agendamento. "
-                        "Se o cliente fugir do assunto, diga: 'Entendo, mas meu foco aqui é sua saúde. Como posso ajudar com sua consulta?' "
-                        "Responda sempre em no máximo 3 frases curtas."
-                    )
+                    "content": "Você é o Agente de Elite de Atendimento da Clínica. Sua postura é profissional, séria e focada em saúde. Seu objetivo único é converter conversas em agendamentos. Responda de forma curta, em no máximo 3 frases."
                 },
                 {"role": "user", "content": message_text}
             ]
         }
-        
         res_ai = requests.post("https://api.openai.com/v1/chat/completions", json=payload_openai, headers=headers_openai)
+        
+        if res_ai.status_code != 200:
+             print(f"❌ ERRO NA OPENAI: {res_ai.text}")
+             return "OK", 200
+             
         resposta_ai = res_ai.json()['choices'][0]['message']['content']
+        print(f"🗣️ RESPOSTA DO ROBÔ: {resposta_ai}")
 
-        # 3. ENVIO PARA Z-API
+        print("🚀 Devolvendo a mensagem para a Z-API...")
         url_zapi = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
         headers_zapi = {
             "Content-Type": "application/json",
@@ -66,15 +82,14 @@ def webhook():
             "message": resposta_ai
         }
         
-        requests.post(url_zapi, json=payload_zapi, headers=headers_zapi)
-        print(f"✅ Respondido para {clean_phone}")
+        envio = requests.post(url_zapi, json=payload_zapi, headers=headers_zapi)
+        print(f"✅ STATUS FINAL DA Z-API: {envio.status_code} | {envio.text}")
 
     except Exception as e:
-        print(f"⚠️ Erro no processamento: {e}")
+        print(f"🔥 ERRO FATAL NO PROCESSO: {e}")
 
     return "OK", 200
 
 if __name__ == '__main__':
-    # Garante que vai rodar na porta que o Render pedir
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
