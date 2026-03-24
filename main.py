@@ -1,39 +1,60 @@
 import os
 import requests
+import psycopg2
 from flask import Flask, request
 
 app = Flask(__name__)
 
+# Pegando as chaves do Render
 OPENAI_KEY = str(os.environ.get("OPENAI_API_KEY", "")).strip()
 ZAPI_INSTANCE = str(os.environ.get("ZAPI_INSTANCE_ID", "")).strip()
 ZAPI_TOKEN = str(os.environ.get("ZAPI_TOKEN", "")).strip()
 ZAPI_CLIENT_TOKEN = str(os.environ.get("ZAPI_CLIENT_TOKEN", "")).strip()
+DATABASE_URL = str(os.environ.get("DATABASE_URL", "")).strip()
+
+# Função para conectar ao Banco de Dados PostgreSQL
+def conectar_banco():
+    return psycopg2.connect(DATABASE_URL)
+
+# Criar a estrutura do banco automaticamente se não existir
+def inicializar_banco():
+    try:
+        conn = conectar_banco()
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS historico_atendimento (
+                id SERIAL PRIMARY KEY,
+                telefone VARCHAR(50),
+                perfil VARCHAR(20),
+                mensagem TEXT,
+                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("🏛️ Banco de Dados PostgreSQL Inicializado e Blindado!")
+    except Exception as e:
+        print(f"❌ Erro ao inicializar o banco: {e}")
+
+# Roda a inicialização quando o app sobe
+inicializar_banco()
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Império de Silício Online 🏛️", 200
+    return "Império de Silício Online com Banco de Dados! 🏛️🐘", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    print("🚨 ALERTA: O WEBHOOK FOI ACIONADO!")
-    
     try:
-        # Pega os dados brutos e força a leitura
         dados = request.get_json(force=True)
-        print(f"📦 DADOS DA Z-API: {dados}")
-    except Exception as e:
-        print(f"❌ ERRO AO LER A MENSAGEM: {e}")
+    except Exception:
         return "OK", 200
 
-    if not dados: return "OK", 200
-
-    if dados.get("fromMe") is True:
-        print("🛑 Mensagem enviada por você mesmo. Ignorada para evitar loop.")
+    if not dados or dados.get("fromMe") is True:
         return "OK", 200
 
     remote_jid = dados.get("phone", "")
-    
-    # Tenta pegar o texto de várias formas possíveis
     message_text = ""
     if "text" in dados and isinstance(dados["text"], dict):
         message_text = dados["text"].get("message", "")
@@ -42,51 +63,88 @@ def webhook():
     elif "message" in dados:
          message_text = dados["message"]
 
-    clean_phone = remote_jid.split("@")[0] if remote_jid else "Desconhecido"
-    print(f"📲 DE: {clean_phone} | MENSAGEM: {message_text}")
-
-    if not message_text:
-        print("⚠️ A mensagem não tem texto (pode ser áudio ou imagem). O robô vai ignorar.")
+    if not remote_jid or not message_text:
         return "OK", 200
 
+    clean_phone = remote_jid.split("@")[0]
+    print(f"📩 [{clean_phone}] Cliente: {message_text}")
+
+    # 1. Salvar a mensagem do cliente no Banco de Dados
     try:
-        print("🧠 Chamando a OpenAI (Agente de Elite)...")
+        conn = conectar_banco()
+        cur = conn.cursor()
+        cur.execute("INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)", 
+                    (clean_phone, "user", message_text))
+        conn.commit()
+    except Exception as e:
+        print(f"🔥 Erro ao salvar cliente no BD: {e}")
+        return "OK", 200
+
+    # 2. Resgatar as últimas 10 interações para o Cérebro da IA ler
+    historico_openai = []
+    
+    # O SCRIPT DE ELITE BLINDADO
+    prompt_sistema = (
+        "Você é o Agente de Elite de Atendimento e Triagem de uma Clínica de Alta Performance. "
+        "Sua missão é dominar a conversa, gerar autoridade e agendar a consulta. "
+        "REGRAS DE OURO: "
+        "1. Nunca seja submisso. Jamais use 'Peço desculpas' ou 'Lamento'. Assuma o controle. "
+        "2. Se não souber o nome, SUA PRIMEIRA PERGUNTA DEVE SER: 'Com quem eu falo, por favor?'. "
+        "3. Se o paciente for rude ou fugir do assunto: 'Compreendo. Nosso objetivo aqui é sua saúde. Como posso te ajudar clinicamente hoje?' "
+        "4. Após saber o nome e o sintoma, direcione ao agendamento. "
+        "5. Seja direto e use no máximo 3 frases curtas por resposta."
+    )
+    historico_openai.append({"role": "system", "content": prompt_sistema})
+
+    try:
+        # Puxa o histórico organizando do mais antigo para o mais novo
+        cur.execute('''
+            SELECT perfil, mensagem FROM (
+                SELECT perfil, mensagem, data_hora 
+                FROM historico_atendimento 
+                WHERE telefone = %s 
+                ORDER BY data_hora DESC LIMIT 10
+            ) sub ORDER BY data_hora ASC
+        ''', (clean_phone,))
+        
+        linhas = cur.fetchall()
+        for linha in linhas:
+            historico_openai.append({"role": linha[0], "content": linha[1]})
+    except Exception as e:
+        print(f"🔥 Erro ao buscar histórico: {e}")
+
+    # 3. Processar na OpenAI
+    try:
         headers_openai = {"Authorization": f"Bearer {OPENAI_KEY}"}
         payload_openai = {
             "model": "gpt-3.5-turbo",
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": "Você é o Agente de Elite de Atendimento da Clínica. Sua postura é profissional, séria e focada em saúde. Seu objetivo único é converter conversas em agendamentos. Responda de forma curta, em no máximo 3 frases."
-                },
-                {"role": "user", "content": message_text}
-            ]
+            "messages": historico_openai
         }
         res_ai = requests.post("https://api.openai.com/v1/chat/completions", json=payload_openai, headers=headers_openai)
         
-        if res_ai.status_code != 200:
-             print(f"❌ ERRO NA OPENAI: {res_ai.text}")
-             return "OK", 200
-             
-        resposta_ai = res_ai.json()['choices'][0]['message']['content']
-        print(f"🗣️ RESPOSTA DO ROBÔ: {resposta_ai}")
+        if res_ai.status_code == 200:
+            resposta_ai = res_ai.json()['choices'][0]['message']['content']
 
-        print("🚀 Devolvendo a mensagem para a Z-API...")
-        url_zapi = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
-        headers_zapi = {
-            "Content-Type": "application/json",
-            "Client-Token": ZAPI_CLIENT_TOKEN
-        }
-        payload_zapi = {
-            "phone": clean_phone,
-            "message": resposta_ai
-        }
-        
-        envio = requests.post(url_zapi, json=payload_zapi, headers=headers_zapi)
-        print(f"✅ STATUS FINAL DA Z-API: {envio.status_code} | {envio.text}")
+            # 4. Salvar a resposta do Robô no Banco de Dados (Memória)
+            cur.execute("INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)", 
+                        (clean_phone, "assistant", resposta_ai))
+            conn.commit()
+            cur.close()
+            conn.close()
+            print(f"🗣️ Robô: {resposta_ai}")
+
+            # 5. Devolver para o WhatsApp via Z-API
+            url_zapi = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
+            headers_zapi = {
+                "Content-Type": "application/json",
+                "Client-Token": ZAPI_CLIENT_TOKEN
+            }
+            requests.post(url_zapi, json={"phone": clean_phone, "message": resposta_ai}, headers=headers_zapi)
+        else:
+            print(f"❌ Erro OpenAI: {res_ai.text}")
 
     except Exception as e:
-        print(f"🔥 ERRO FATAL NO PROCESSO: {e}")
+        print(f"🔥 Erro OpenAI/Z-API: {e}")
 
     return "OK", 200
 
