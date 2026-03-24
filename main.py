@@ -6,13 +6,15 @@ from flask import Flask, request
 app = Flask(__name__)
 
 # ENV
-OPENAI_KEY = str(os.environ.get("OPENAI_API_KEY", "")).strip()
-ZAPI_INSTANCE = str(os.environ.get("ZAPI_INSTANCE_ID", "")).strip()
-ZAPI_TOKEN = str(os.environ.get("ZAPI_TOKEN", "")).strip()
-ZAPI_CLIENT_TOKEN = str(os.environ.get("ZAPI_CLIENT_TOKEN", "")).strip()
-DATABASE_URL = str(os.environ.get("DATABASE_URL", "")).strip()
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE_ID", "").strip()
+ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "").strip()
+ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "").strip()
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
-# DB
+# =========================
+# BANCO DE DADOS
+# =========================
 def conectar_banco():
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
@@ -32,16 +34,56 @@ def inicializar_banco():
         conn.commit()
         cur.close()
         conn.close()
-        print("🏛️ Banco pronto!")
+        print("✅ Banco pronto")
     except Exception as e:
         print(f"Erro banco: {e}")
 
 inicializar_banco()
 
-@app.route('/', methods=['GET'])
-def home():
-    return "Império de Silício rodando 🚀", 200
+# =========================
+# PROMPT ELITE FINAL
+# =========================
+def gerar_prompt():
+    return """
+Você é um Especialista em Conversão e Agendamento de uma Clínica Premium.
 
+MISSÃO:
+Levar o cliente até o AGENDAMENTO.
+
+REGRAS:
+- Nunca peça desculpas
+- Nunca reinicie conversa
+- Nunca diga "como posso ajudar" após início
+- Máximo 2 frases
+- Sempre conduzir
+
+COMPORTAMENTO:
+- Cliente perdido → faça perguntas diretas
+- Emoção → leve para avaliação médica
+- Sem dinheiro → ofereça parcelamento
+- Brincadeira → ignore e volte ao foco
+
+FLUXO:
+1. Sintoma
+2. Especialidade
+3. Horário
+4. Fechamento
+
+EXEMPLOS:
+
+Cliente: "não sei"
+Resposta: "Vamos resolver isso agora. O que você está sentindo?"
+
+Cliente: "estou mal emocionalmente"
+Resposta: "Isso precisa de avaliação profissional. Vamos agendar hoje. Prefere manhã ou tarde?"
+
+Cliente: "sem dinheiro"
+Resposta: "Temos parcelamento. Vamos garantir seu atendimento. Qual horário prefere?"
+"""
+
+# =========================
+# ROTA PRINCIPAL
+# =========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
@@ -49,144 +91,103 @@ def webhook():
     except:
         return "OK", 200
 
-    if not dados or dados.get("fromMe") is True:
+    if not dados or dados.get("fromMe"):
         return "OK", 200
 
-    remote_jid = dados.get("phone", "")
-    message_text = ""
+    telefone = dados.get("phone", "").split("@")[0]
+    mensagem = ""
 
     if isinstance(dados.get("text"), dict):
-        message_text = dados["text"].get("message", "")
+        mensagem = dados["text"].get("message", "")
     elif isinstance(dados.get("text"), str):
-        message_text = dados["text"]
+        mensagem = dados["text"]
     elif "message" in dados:
-        message_text = dados["message"]
+        mensagem = dados["message"]
 
-    if not remote_jid or not message_text:
+    if not telefone or not mensagem:
         return "OK", 200
 
-    clean_phone = remote_jid.split("@")[0]
-    print(f"[{clean_phone}] {message_text}")
+    print(f"[{telefone}] Cliente: {mensagem}")
 
-    # SALVA MENSAGEM USUÁRIO
     try:
         conn = conectar_banco()
         cur = conn.cursor()
+
+        # salva cliente
         cur.execute(
-            "INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s,%s,%s)",
-            (clean_phone, "user", message_text)
+            "INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)",
+            (telefone, "user", mensagem)
         )
         conn.commit()
-    except Exception as e:
-        print(f"Erro salvar user: {e}")
-        return "OK", 200
 
-    # PROMPT DE ELITE
-    prompt_sistema = (
-        "Você é um Especialista em Conversão de uma Clínica Premium.\n"
-        "Missão: AGENDAR CONSULTA.\n"
-
-        "REGRAS:\n"
-        "- Nunca peça desculpas\n"
-        "- Nunca reinicie conversa\n"
-        "- Nunca saia do contexto\n"
-        "- Máximo 2 frases\n"
-
-        "COMPORTAMENTO:\n"
-        "- Sempre conduza\n"
-        "- Sempre puxe para agendamento\n"
-        "- Controle total da conversa\n"
-
-        "OBJEÇÕES:\n"
-        "Sem dinheiro: 'Temos parcelamento. Vamos garantir seu atendimento.'\n"
-
-        "DESVIO:\n"
-        "Ignorar e voltar para consulta.\n"
-    )
-
-    historico_openai = [{"role": "system", "content": prompt_sistema}]
-
-    # BUSCA MEMÓRIA
-    try:
-        cur.execute('''
+        # busca histórico
+        cur.execute("""
             SELECT perfil, mensagem FROM (
                 SELECT perfil, mensagem, data_hora
                 FROM historico_atendimento
                 WHERE telefone = %s
                 ORDER BY data_hora DESC LIMIT 10
             ) sub ORDER BY data_hora ASC
-        ''', (clean_phone,))
+        """, (telefone,))
+
+        historico = [{"role": "system", "content": gerar_prompt()}]
 
         for perfil, msg in cur.fetchall():
-            role = "user" if perfil == "user" else "assistant"
-            historico_openai.append({"role": role, "content": msg})
+            role = "assistant" if perfil == "assistant" else "user"
+            historico.append({"role": role, "content": msg})
 
-    except Exception as e:
-        print(f"Erro histórico: {e}")
-
-    # ANTI-DESVIO
-    msg_lower = message_text.lower()
-
-    if "kkk" in msg_lower or "brincadeira" in msg_lower:
-        resposta_ai = "Vamos focar na sua saúde. Qual sintoma você quer avaliar?"
-    elif "triste" in msg_lower or "mal" in msg_lower:
-        resposta_ai = "Isso precisa de avaliação profissional. Vamos agendar sua consulta?"
-    else:
-        try:
-            headers = {"Authorization": f"Bearer {OPENAI_KEY}"}
-            payload = {
+        # OpenAI
+        resposta = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+            json={
                 "model": "gpt-3.5-turbo",
-                "messages": historico_openai
+                "messages": historico,
+                "temperature": 0.7
             }
+        )
 
-            res = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                json=payload,
-                headers=headers
-            )
-
-            if res.status_code == 200:
-                resposta_ai = res.json()['choices'][0]['message']['content']
-            else:
-                print("Erro OpenAI:", res.text)
-                return "OK", 200
-
-        except Exception as e:
-            print("Erro IA:", e)
+        if resposta.status_code != 200:
+            print(resposta.text)
             return "OK", 200
 
-    # SALVA RESPOSTA
-    try:
+        resposta_texto = resposta.json()['choices'][0]['message']['content']
+
+        # salva resposta
         cur.execute(
-            "INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s,%s,%s)",
-            (clean_phone, "assistant", resposta_ai)
+            "INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)",
+            (telefone, "assistant", resposta_texto)
         )
         conn.commit()
+
         cur.close()
         conn.close()
-    except Exception as e:
-        print("Erro salvar bot:", e)
 
-    print("BOT:", resposta_ai)
+        print(f"Robô: {resposta_texto}")
 
-    # ENVIA WHATSAPP
-    try:
-        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
-
-        headers = {
-            "Content-Type": "application/json",
-            "Client-Token": ZAPI_CLIENT_TOKEN
-        }
-
-        requests.post(url, json={
-            "phone": clean_phone,
-            "message": resposta_ai
-        }, headers=headers)
+        # envia WhatsApp
+        requests.post(
+            f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text",
+            headers={
+                "Content-Type": "application/json",
+                "Client-Token": ZAPI_CLIENT_TOKEN
+            },
+            json={
+                "phone": telefone,
+                "message": resposta_texto
+            }
+        )
 
     except Exception as e:
-        print("Erro ZAPI:", e)
+        print(f"Erro geral: {e}")
 
     return "OK", 200
+
+
+@app.route('/', methods=['GET'])
+def home():
+    return "Império de Silício rodando 🚀", 200
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
