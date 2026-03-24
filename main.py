@@ -5,36 +5,36 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Configurações de Ambiente (Segurança Máxima)
+# Pegamos as 4 chaves do Render (Garantindo que estão limpas)
 OPENAI_KEY = str(os.environ.get("OPENAI_API_KEY", "")).strip()
 ZAPI_INSTANCE = str(os.environ.get("ZAPI_INSTANCE_ID", "")).strip()
 ZAPI_TOKEN = str(os.environ.get("ZAPI_TOKEN", "")).strip()
 ZAPI_CLIENT_TOKEN = str(os.environ.get("ZAPI_CLIENT_TOKEN", "")).strip()
-DB_NAME = "agente_elite.db"
+DB_NAME = "clinica_elite.db"
 
-# 1. FUNDAMENTO: Inicializa o Banco de Dados SQL
+# 1. Banco de Dados SQL (O Fundamento da Memória)
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS historico 
-        (id INTEGER PRIMARY KEY AUTOINCREMENT, telefone TEXT, cliente_msg TEXT, ia_resp TEXT, data TIMESTAMP)''')
+        (id INTEGER PRIMARY KEY AUTOINCREMENT, telefone TEXT, msg_cliente TEXT, msg_ia TEXT, data TIMESTAMP)''')
     conn.commit()
     conn.close()
 
-# 2. MEMÓRIA: Busca o histórico para dar contexto à IA
-def buscar_historico(telefone):
+# 2. Busca o que foi conversado antes
+def buscar_memoria(telefone):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT cliente_msg, ia_resp FROM historico WHERE telefone = ? ORDER BY id DESC LIMIT 4", (telefone,))
+    cursor.execute("SELECT msg_cliente, msg_ia FROM historico WHERE telefone = ? ORDER BY id DESC LIMIT 4", (telefone,))
     rows = cursor.fetchall()
     conn.close()
-    return "\n".join([f"Cliente: {r[0]}\nAgente: {r[1]}" for r in reversed(rows)])
+    return "\n".join([f"Paciente: {r[0]}\nAgente: {r[1]}" for r in reversed(rows)])
 
-# 3. REGISTRO: Salva a conversa para a próxima interação
+# 3. Salva a conversa atual
 def salvar_conversa(telefone, msg, resp):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO historico (telefone, cliente_msg, ia_resp, data) VALUES (?, ?, ?, ?)",
+    cursor.execute("INSERT INTO historico (telefone, msg_cliente, msg_ia, data) VALUES (?, ?, ?, ?)",
                    (telefone, msg, resp, datetime.now()))
     conn.commit()
     conn.close()
@@ -43,7 +43,7 @@ init_db()
 
 @app.route('/', methods=['GET'])
 def home():
-    return "O Império de Silício está Online! 🏛️🤖", 200
+    return "Império de Silício Online! 🏛️🤖", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -52,18 +52,20 @@ def webhook():
 
     remote_jid = dados.get("phone", "")
     message_text = dados.get("text", {}).get("message", "")
-    if not remote_jid or not message_text: return "Ignorado", 200
+    
+    # Ignora mensagens vazias ou enviadas pelo próprio robô
+    if not remote_jid or not message_text or dados.get("fromMe", False): 
+        return "Ignorado", 200
 
     clean_phone = remote_jid.split("@")[0]
-    historico = buscar_historico(clean_phone)
+    memoria = buscar_memoria(clean_phone)
 
     try:
-        # 1. IA com Personalidade de Elite para Clínicas
+        # 1. IA com Personalidade de Elite e Memória
         headers_openai = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
         prompt_sistema = (
-            "Você é o Agente de Elite da Clínica. Seu objetivo é agendar consultas de forma persuasiva. "
-            "Seja acolhedor, autoritário e contorne objeções com foco em saúde e bem-estar. "
-            f"\nHistórico recente:\n{historico}"
+            "Você é o Especialista de Elite da Clínica. Seu objetivo é agendar consultas de forma persuasiva e acolhedora. "
+            f"\nHistórico recente:\n{memoria}"
         )
         
         payload_openai = {
@@ -76,10 +78,10 @@ def webhook():
         res_ai = requests.post("https://api.openai.com/v1/chat/completions", json=payload_openai, headers=headers_openai)
         resposta_ai = res_ai.json()['choices'][0]['message']['content']
 
-        # 2. Salva na Memória SQL
+        # 2. Registra no Banco SQL
         salvar_conversa(clean_phone, message_text, resposta_ai)
 
-        # 3. Envio Blindado para Z-API
+        # 3. Envio Blindado para Z-API (Usando seu Client-Token)
         url_zapi = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
         headers_zapi = {"Content-Type": "application/json", "Client-Token": ZAPI_CLIENT_TOKEN}
         payload_zapi = {"phone": clean_phone, "message": resposta_ai}
