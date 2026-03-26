@@ -1,193 +1,103 @@
-Import os
-import requests
-import psycopg2
+import os, requests, sqlite3, json
 from flask import Flask, request
+from datetime import datetime
 
 app = Flask(__name__)
 
-# ENV
-OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
-ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE_ID", "").strip()
-ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "").strip()
-ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "").strip()
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+# Configurações de Ambiente
+OPENAI_KEY = str(os.environ.get("OPENAI_API_KEY", "")).strip()
+ZAPI_INSTANCE = str(os.environ.get("ZAPI_INSTANCE_ID", "")).strip()
+ZAPI_TOKEN = str(os.environ.get("ZAPI_TOKEN", "")).strip()
+ZAPI_CLIENT_TOKEN = str(os.environ.get("ZAPI_CLIENT_TOKEN", "")).strip()
+DB_NAME = "clinica_elite.db"
 
-# =========================
-# BANCO DE DADOS
-# =========================
-def conectar_banco():
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS historico 
+        (id INTEGER PRIMARY KEY AUTOINCREMENT, telefone TEXT, msg_cliente TEXT, msg_ia TEXT, data TIMESTAMP)''')
+    conn.commit()
+    conn.close()
 
-def inicializar_banco():
-    try:
-        conn = conectar_banco()
-        cur = conn.cursor()
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS historico_atendimento (
-                id SERIAL PRIMARY KEY,
-                telefone VARCHAR(50),
-                perfil VARCHAR(20),
-                mensagem TEXT,
-                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        conn.commit()
-        cur.close()
-        conn.close()
-        print("✅ Banco pronto")
-    except Exception as e:
-        print(f"Erro banco: {e}")
+def buscar_memoria(telefone):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT msg_cliente, msg_ia FROM historico WHERE telefone = ? ORDER BY id DESC LIMIT 4", (telefone,))
+    rows = cursor.fetchall()
+    conn.close()
+    return "\n".join([f"Paciente: {r[0]}\nAgente: {r[1]}" for r in reversed(rows)])
 
-inicializar_banco()
+def salvar_conversa(telefone, msg, resp):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO historico (telefone, msg_cliente, msg_ia, data) VALUES (?, ?, ?, ?)",
+                   (telefone, msg, resp, datetime.now()))
+    conn.commit()
+    conn.close()
 
-# =========================
-# PROMPT ELITE FINAL
-# =========================
-def gerar_prompt():
-    return """
-Você é um Especialista em Conversão e Agendamento de uma Clínica Premium.
-
-MISSÃO:
-Levar o cliente até o AGENDAMENTO.
-
-REGRAS:
-- Nunca peça desculpas
-- Nunca reinicie conversa
-- Nunca diga "como posso ajudar" após início
-- Máximo 2 frases
-- Sempre conduzir
-
-COMPORTAMENTO:
-- Cliente perdido → faça perguntas diretas
-- Emoção → leve para avaliação médica
-- Sem dinheiro → ofereça parcelamento
-- Brincadeira → ignore e volte ao foco
-
-FLUXO:
-1. Sintoma
-2. Especialidade
-3. Horário
-4. Fechamento
-
-EXEMPLOS:
-
-Cliente: "não sei"
-Resposta: "Vamos resolver isso agora. O que você está sentindo?"
-
-Cliente: "estou mal emocionalmente"
-Resposta: "Isso precisa de avaliação profissional. Vamos agendar hoje. Prefere manhã ou tarde?"
-
-Cliente: "sem dinheiro"
-Resposta: "Temos parcelamento. Vamos garantir seu atendimento. Qual horário prefere?"
-"""
-
-# =========================
-# ROTA PRINCIPAL
-# =========================
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    try:
-        dados = request.get_json(force=True)
-    except:
-        return "OK", 200
-
-    if not dados or dados.get("fromMe"):
-        return "OK", 200
-
-    telefone = dados.get("phone", "").split("@")[0]
-    mensagem = ""
-
-    if isinstance(dados.get("text"), dict):
-        mensagem = dados["text"].get("message", "")
-    elif isinstance(dados.get("text"), str):
-        mensagem = dados["text"]
-    elif "message" in dados:
-        mensagem = dados["message"]
-
-    if not telefone or not mensagem:
-        return "OK", 200
-
-    print(f"[{telefone}] Cliente: {mensagem}")
-
-    try:
-        conn = conectar_banco()
-        cur = conn.cursor()
-
-        # salva cliente
-        cur.execute(
-            "INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)",
-            (telefone, "user", mensagem)
-        )
-        conn.commit()
-
-        # busca histórico
-        cur.execute("""
-            SELECT perfil, mensagem FROM (
-                SELECT perfil, mensagem, data_hora
-                FROM historico_atendimento
-                WHERE telefone = %s
-                ORDER BY data_hora DESC LIMIT 10
-            ) sub ORDER BY data_hora ASC
-        """, (telefone,))
-
-        historico = [{"role": "system", "content": gerar_prompt()}]
-
-        for perfil, msg in cur.fetchall():
-            role = "assistant" if perfil == "assistant" else "user"
-            historico.append({"role": role, "content": msg})
-
-        # OpenAI
-        resposta = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-            json={
-                "model": "gpt-3.5-turbo",
-                "messages": historico,
-                "temperature": 0.7
-            }
-        )
-
-        if resposta.status_code != 200:
-            print(resposta.text)
-            return "OK", 200
-
-        resposta_texto = resposta.json()['choices'][0]['message']['content']
-
-        # salva resposta
-        cur.execute(
-            "INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)",
-            (telefone, "assistant", resposta_texto)
-        )
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        print(f"Robô: {resposta_texto}")
-
-        # envia WhatsApp
-        requests.post(
-            f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text",
-            headers={
-                "Content-Type": "application/json",
-                "Client-Token": ZAPI_CLIENT_TOKEN
-            },
-            json={
-                "phone": telefone,
-                "message": resposta_texto
-            }
-        )
-
-    except Exception as e:
-        print(f"Erro geral: {e}")
-
-    return "OK", 200
-
+init_db()
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Império de Silício rodando 🚀", 200
+    return "Império de Silício Online! 🏛️🤖", 200
 
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    dados = request.get_json()
+    if not dados: return "Sem dados", 200
+
+    # 🚨 FILTRO DE ELITE: Só responde se for uma mensagem recebida e se tiver texto
+    # Isso evita as respostas duplas e o consumo desnecessário de créditos
+    if dados.get("type") != "ReceivedMessage" or "text" not in dados:
+        return "Evento ignorado", 200
+
+    remote_jid = dados.get("phone", "")
+    message_text = dados.get("text", {}).get("message", "")
+    
+    # Ignora mensagens enviadas pelo próprio robô
+    if not remote_jid or not message_text or dados.get("fromMe", False): 
+        return "Ignorado", 200
+
+    clean_phone = remote_jid.split("@")[0]
+    memoria = buscar_memoria(clean_phone)
+
+    try:
+        # 🧠 IA COM PERSONALIDADE DE FERRO: Focada 100% em Saúde e Agendamento
+        headers_openai = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
+        prompt_sistema = (
+            "Você é o Especialista de Elite da Clínica de Saúde. "
+            "Sua missão única é cuidar da saúde dos pacientes e agendar consultas. "
+            "REGRAS CRÍTICAS:\n"
+            "1. RESPONDA TUDO EM APENAS UM PARÁGRAFO CURTO.\n"
+            "2. Nunca peça ou empreste dinheiro. Se o assunto fugir de saúde, diga que seu foco é o bem-estar médico e tente voltar para o agendamento.\n"
+            "3. Se o paciente estiver confuso, acolha-o e mostre autoridade médica.\n"
+            f"HISTÓRICO:\n{memoria}"
+        )
+        
+        payload_openai = {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": prompt_sistema},
+                {"role": "user", "content": message_text}
+            ]
+        }
+        res_ai = requests.post("https://api.openai.com/v1/chat/completions", json=payload_openai, headers=headers_openai)
+        resposta_ai = res_ai.json()['choices'][0]['message']['content']
+
+        salvar_conversa(clean_phone, message_text, resposta_ai)
+
+        # Envio Blindado
+        url_zapi = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
+        headers_zapi = {"Content-Type": "application/json", "Client-Token": ZAPI_CLIENT_TOKEN}
+        payload_zapi = {"phone": clean_phone, "message": resposta_ai}
+        
+        requests.post(url_zapi, json=payload_zapi, headers=headers_zapi)
+        print(f"✅ SUCESSO: Respondido para {clean_phone}")
+
+    except Exception as e:
+        print(f"⚠️ ERRO GERAL: {e}")
+
+    return "OK", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
