@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 AGENTE DE ELITE FINAL - CONTROLE TOTAL ATIVO")
+print("🚀 AGENTE DE ELITE FINAL - BLINDADO ATIVO")
 
 app = Flask(__name__)
 
@@ -27,40 +27,45 @@ def conectar():
     return psycopg2.connect(DATABASE_URL, sslmode='require', connect_timeout=10)
 
 def init_db():
-    try:
-        conn = conectar()
-        cur = conn.cursor()
+    conn = conectar()
+    cur = conn.cursor()
 
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS sessoes (
-            telefone TEXT PRIMARY KEY,
-            estado TEXT,
-            nome TEXT,
-            cpf TEXT,
-            sintoma TEXT,
-            horario TEXT,
-            ultima_msg TEXT
-        )
-        """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS sessoes (
+        telefone TEXT PRIMARY KEY,
+        estado TEXT,
+        nome TEXT,
+        cpf TEXT,
+        sintoma TEXT,
+        horario TEXT,
+        ultima_msg TEXT
+    )
+    """)
 
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS agenda (
-            id SERIAL PRIMARY KEY,
-            hora TEXT,
-            disponivel BOOLEAN DEFAULT TRUE
-        )
-        """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS agenda (
+        id SERIAL PRIMARY KEY,
+        hora TEXT,
+        disponivel BOOLEAN DEFAULT TRUE
+    )
+    """)
 
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        print("✅ BANCO PRONTO")
-
-    except Exception as e:
-        print("❌ ERRO BANCO:", e)
+    conn.commit()
+    cur.close()
+    conn.close()
 
 init_db()
+
+# =========================
+# BLOQUEIO TOTAL (ANTI DESVIO)
+# =========================
+def fora_do_escopo(msg):
+    palavras = [
+        "dinheiro", "ganhar dinheiro", "acidente",
+        "socorro", "morrendo", "urgente", "ajuda",
+        "me ajuda", "emergencia", "emergência"
+    ]
+    return any(p in msg.lower() for p in palavras)
 
 # =========================
 # AUXILIARES
@@ -81,7 +86,7 @@ def enviar_whatsapp(telefone, mensagem):
             timeout=10
         )
     except Exception as e:
-        print("Erro envio WhatsApp:", e)
+        print("Erro WhatsApp:", e)
 
 # =========================
 # WEBHOOK
@@ -131,6 +136,16 @@ def webhook():
     conn.commit()
 
     # =========================
+    # BLOQUEIO DE ESCOPO
+    # =========================
+    if fora_do_escopo(msg):
+        resposta = "Meu foco aqui é seu agendamento. Vamos continuar."
+        enviar_whatsapp(telefone, resposta)
+        cur.close()
+        conn.close()
+        return "OK", 200
+
+    # =========================
     # BUSCA VAGAS
     # =========================
     cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
@@ -140,7 +155,7 @@ def webhook():
     resposta = ""
 
     # =========================
-    # MOTOR CONTROLADO
+    # FLUXO CONTROLADO
     # =========================
     if estado == "TRIAGEM":
         sintoma = msg
@@ -169,6 +184,7 @@ def webhook():
             cpf = msg
             estado = "CONFIRMADO"
 
+            # baixa na agenda
             cur.execute("""
             UPDATE agenda 
             SET disponivel=FALSE 
@@ -178,7 +194,7 @@ def webhook():
             resposta = f"Agendamento confirmado para {horario}. Nossa equipe te aguarda."
 
     else:
-        resposta = "Meu foco é seu agendamento. Vamos continuar."
+        resposta = "Meu foco aqui é seu agendamento. Vamos continuar."
 
     # =========================
     # ATUALIZA SESSÃO
@@ -201,7 +217,7 @@ def webhook():
     return "OK", 200
 
 # =========================
-# RESET AGENDA
+# RESET
 # =========================
 @app.route('/reset', methods=['GET'])
 def reset():
@@ -223,18 +239,14 @@ def reset():
 # =========================
 # HOME
 # =========================
-@app.route('/', methods=['GET'])
+@app.route('/')
 def home():
-    return "AGENTE DE ELITE FINAL ONLINE 🚀", 200
+    return "AGENTE DE ELITE BLINDADO ONLINE 🚀"
 
 # =========================
-# START SERVIDOR (IMPORTANTE)
+# START
 # =========================
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-
-
-
-Acho e esse codigo esta perfeito, oque me diz ?
