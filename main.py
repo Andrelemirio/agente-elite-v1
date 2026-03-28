@@ -1,4 +1,4 @@
-Import os
+import os
 import requests
 import psycopg2
 from flask import Flask, request
