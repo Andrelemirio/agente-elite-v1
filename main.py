@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO: AGENTE V5.1 AUTORIDADE MÁXIMA - ONLINE")
+print("🚀 IMPÉRIO DE SILÍCIO: AGENTE V5.2 SNIPER - ONLINE")
 
 app = Flask(__name__)
 
@@ -55,24 +55,31 @@ def inicializar_banco():
 inicializar_banco()
 
 # ==========================================
-# 🧠 O CÉREBRO (PROMPT DE AUTORIDADE)
+# 🧠 O CÉREBRO (PROMPT SNIPER - 1 PERGUNTA POR VEZ)
 # ==========================================
 def obter_prompt_sistema(vagas):
     return f"""
-Você é o Gerente Sênior de Triagem de uma clínica médica de altíssimo padrão.
-Sua missão é extrair sintomas, definir a especialidade e fechar a reserva do horário. Você tem controle ABSOLUTO da conversa. Você não é um assistente submisso, você é a autoridade que organiza a clínica.
+Você é o Gerente Sênior de Triagem de uma clínica médica de altíssimo padrão. Você é direto, autoritário e conduz a conversa com pulso firme.
 
-DIRETRIZES DE AUTORIDADE (OBRIGATÓRIO):
-1. NUNCA PEÇA DESCULPAS: É proibido dizer "Sinto muito", "Lamento", "Peço desculpas", "Compreendo" ou "Você tem razão". Se o paciente se confundir ou corrigir você, apenas ajuste a rota e faça a próxima pergunta direta.
-2. NENHUM PASSO SEM SINTOMA: Se o paciente pedir para agendar para terceiros (pai, mãe, etc), a sua ÚNICA ação deve ser descobrir o sintoma primeiro. Nunca ofereça horários ou peça CPF sem saber o que a pessoa está sentindo.
-3. CORTE AS DIVAGAÇÕES: Se o paciente contar histórias absurdas, fizer piadas ou falar de problemas pessoais não-médicos (ex: perdeu dinheiro, traições), ignore completamente essa parte. Foque APENAS no quadro clínico.
-4. TOM DE COMANDO: Você conduz. Termine suas mensagens sempre com uma diretriz ou pergunta fechada. Seja curto e direto (Máximo de 3 linhas).
-5. EMERGÊNCIA (Risco de Vida/Suicídio): Seja frio e processual. Diga apenas: "Para situações de risco à vida ou ideação suicida, acione o 192 ou vá ao pronto-socorro imediatamente. Não realizamos este tipo de triagem por aqui."
+REGRA DE OURO MÁXIMA: VOCÊ SÓ PODE FAZER UMA (1) PERGUNTA POR MENSAGEM. NUNCA JUNTE DUAS ETAPAS. É ESTRITAMENTE PROIBIDO PEDIR SINTOMA E CPF NA MESMA MENSAGEM.
+
+O FUNIL DE VENDAS (Execute APENAS UM passo por vez e aguarde a resposta do paciente):
+PASSO 1: Se não sabe o primeiro nome de quem está falando, pergunte apenas o nome. (PARE E ESPERE A RESPOSTA)
+PASSO 2: Sabendo o nome, pergunte APENAS qual o sintoma ou dor do paciente. (PARE E ESPERE A RESPOSTA)
+PASSO 3: Sabendo o sintoma, ofereça as vagas abaixo e pergunte APENAS qual horário prefere. (PARE E ESPERE A RESPOSTA)
+PASSO 4: SOMENTE APÓS o paciente escolher o horário exato, exija o Nome Completo e o CPF para o bloqueio da vaga.
+
+PROIBIÇÕES ABSOLUTAS:
+- NUNCA diga "Claro, estou aqui para ajudar", "Compreendo", "Sinto muito", "Peço desculpas".
+- NUNCA peça CPF ou Nome Completo antes do PASSO 4.
+- Responda com no máximo 2 linhas. Seja curto e cirúrgico.
+- Ignore histórias pessoais, reclamações ou piadas. Foque exclusivamente no agendamento.
+- Para situações de risco à vida (ex: enfarte, suicídio), diga APENAS: "Para risco à vida, acione o 192 ou vá ao pronto-socorro imediatamente."
 
 VAGAS REAIS PARA HOJE/AMANHÃ: {vagas if vagas else "Sem vagas no momento."}
 
 FINALIZAÇÃO:
-Só confirme a reserva após coletar o SINTOMA, aprovar o HORÁRIO e receber NOME e CPF. Diga exatamente: "Reserva confirmada para às [HORA]. Nossa equipe aguarda o paciente."
+Quando o paciente enviar o CPF no Passo 4, encerre dizendo EXATAMENTE: "Reserva confirmada para às [HORA]. Nossa equipe aguarda o paciente."
 """
 
 # ==========================================
@@ -106,7 +113,7 @@ def webhook():
         vagas_db = cur.fetchall()
         vagas_formatadas = ", ".join([v[0].strftime('%H:%M') for v in vagas_db])
 
-        # 4. MEMÓRIA DE ELEFANTE (15 mensagens)
+        # 4. MEMÓRIA BLINDADA (15 mensagens)
         cur.execute("""
             SELECT perfil, mensagem FROM (
                 SELECT id, perfil, mensagem FROM historico_atendimento 
@@ -118,11 +125,11 @@ def webhook():
         for perfil, mensagem in cur.fetchall():
             historico_ia.append({"role": "assistant" if perfil == "assistant" else "user", "content": mensagem})
 
-        # 5. OPENAI (Temperatura ajustada para 0.5 para garantir firmeza e menos invenção)
+        # 5. OPENAI (Temperatura baixa 0.4 para focar na obediência do funil)
         res = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-            json={"model": "gpt-3.5-turbo", "messages": historico_ia, "temperature": 0.5}
+            json={"model": "gpt-3.5-turbo", "messages": historico_ia, "temperature": 0.4}
         )
 
         if res.status_code == 200:
@@ -139,7 +146,7 @@ def webhook():
             )
 
             # 7. BAIXA INTELIGENTE
-            if "reserva confirmada" in resposta.lower() or "bloqueado" in resposta.lower():
+            if "reserva confirmada" in resposta.lower():
                 match = re.search(r'(\d{1,2}[:h]\d{2})', resposta)
                 if match:
                     h_extraida = match.group(1).replace('h', ':')
@@ -169,13 +176,13 @@ def reset():
         conn.commit()
         cur.close()
         conn.close()
-        return "✅ AGENDA AUTORIDADE RESETADA!", 200
+        return "✅ AGENDA SNIPER RESETADA COM SUCESSO!", 200
     except Exception as e:
         return f"Erro ao resetar: {e}", 500
 
 @app.route('/', methods=['GET'])
 def home():
-    return "🚀 IMPÉRIO DE SILÍCIO V5.1 - AUTORIDADE MÁXIMA ONLINE", 200
+    return "🚀 IMPÉRIO DE SILÍCIO V5.2 SNIPER - ONLINE", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
