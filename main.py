@@ -4,12 +4,12 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 AGENTE DE ELITE FINAL - CONTROLE TOTAL ATIVO")
+print("🚀 AGENTE DE ELITE FINAL - OPERAÇÃO DIAMANTE ATIVA")
 
 app = Flask(__name__)
 
 # =========================
-# CONFIG
+# CONFIGURAÇÕES
 # =========================
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
 ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE_ID", "")
@@ -21,7 +21,7 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # =========================
-# BANCO
+# BANCO DE DADOS
 # =========================
 def conectar():
     return psycopg2.connect(DATABASE_URL, sslmode='require', connect_timeout=10)
@@ -50,26 +50,17 @@ def init_db():
         )
         """)
         conn.commit()
-        print("✅ BANCO PRONTO E CONECTADO")
+        print("✅ BANCO SINCRONIZADO")
     except Exception as e:
         print("❌ ERRO BANCO:", e)
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
 init_db()
 
 # =========================
 # AUXILIARES
 # =========================
-def detectar_horario(msg):
-    match = re.search(r'\b(0?[0-9]|1[0-9]|2[0-3])\b', msg)
-    return match.group() if match else None
-
-def validar_cpf(cpf):
-    nums = re.sub(r'\D', '', cpf)
-    return len(nums) == 11
-
 def enviar_whatsapp(telefone, mensagem):
     try:
         requests.post(
@@ -79,10 +70,10 @@ def enviar_whatsapp(telefone, mensagem):
             timeout=10
         )
     except Exception as e:
-        print("Erro envio WhatsApp:", e)
+        print("Erro WhatsApp:", e)
 
 # =========================
-# WEBHOOK (REVISADO)
+# WEBHOOK PRINCIPAL
 # =========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -113,9 +104,6 @@ def webhook():
         if msg == ultima_msg:
             return "OK", 200
 
-        cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg, telefone))
-        conn.commit()
-
         # BUSCA VAGAS
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
         vagas_lista = [v[0] for v in cur.fetchall()]
@@ -123,60 +111,56 @@ def webhook():
 
         resposta = ""
 
-        # MOTOR DE ESTADOS
+        # LÓGICA DE ATENDIMENTO
         if estado == "TRIAGEM":
             sintoma = msg
             estado = "AGENDAMENTO"
-            resposta = f"Entendi. Para esses sintomas, o ideal é o clínico. Tenho horários: {vagas}. Qual você escolhe?"
+            resposta = f"Entendi sua necessidade. Para esses sintomas, o ideal é o Clínico Geral. Tenho horários: {vagas}. Qual você escolhe?"
 
         elif estado == "AGENDAMENTO":
-            h_det = detectar_horario(msg)
-            if not h_det:
-                resposta = f"Por favor, escolha um horário válido: {vagas}"
+            # Pega o primeiro número da mensagem como hora
+            match = re.search(r'(\d{1,2})', msg)
+            h_dig = match.group(1).zfill(2) if match else ""
+            
+            h_final = None
+            for v in vagas_lista:
+                if v.startswith(h_dig): h_final = v
+            
+            if not h_final:
+                resposta = f"Por favor, escolha um destes horários: {vagas}"
             else:
-                # Ajuste para bater com o formato do banco (ex: 09:00)
-                horario = f"{h_det.zfill(2)}:00"
-                if horario not in vagas:
-                    # Tenta ver se é meia hora (ex: 14:30)
-                    horario = f"{h_det.zfill(2)}:30"
-                
-                if horario not in vagas:
-                    resposta = f"Esse horário não está disponível. Escolha entre: {vagas}"
-                else:
-                    estado = "DADOS_NOME"
-                    resposta = f"Perfeito, agendado para às {horario}. Agora, me informe seu nome completo."
+                horario = h_final
+                estado = "DADOS_NOME"
+                resposta = f"Perfeito, pré-agendado para {horario}. Agora, me informe seu nome completo para a ficha."
 
         elif estado == "DADOS_NOME":
             nome = msg
             estado = "DADOS_CPF"
-            resposta = "Obrigado. Agora preciso do seu CPF (apenas os 11 números)."
+            resposta = f"Obrigado, {nome.split()[0]}. Para finalizar, digite apenas os 11 números do seu CPF."
 
         elif estado == "DADOS_CPF":
-            if not validar_cpf(msg):
+            nums = re.sub(r'\D', '', msg)
+            if len(nums) != 11:
                 resposta = "CPF inválido. Digite os 11 números, por favor."
             else:
-                cpf = re.sub(r'\D', '', msg)
+                cpf = nums
                 estado = "CONFIRMADO"
                 cur.execute("UPDATE agenda SET disponivel=FALSE WHERE id IN (SELECT id FROM agenda WHERE hora=%s AND disponivel=TRUE LIMIT 1)", (horario,))
-                resposta = f"Agendamento confirmado para {horario}. Nossa equipe te aguarda!"
+                resposta = f"Tudo pronto! Seu agendamento para {horario} foi confirmado com sucesso. Nossa equipe te aguarda!"
 
         else:
-            resposta = "Seu agendamento já está confirmado. Em breve nossa equipe entrará em contato."
+            resposta = "Seu agendamento já está confirmado. Em breve entraremos em contato."
 
-        # ATUALIZA TUDO
-        cur.execute("""
-            UPDATE sessoes 
-            SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s 
-            WHERE telefone=%s
-        """, (estado, nome, cpf, sintoma, horario, telefone))
+        # ATUALIZA TUDO E FECHA
+        cur.execute("UPDATE sessoes SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s WHERE telefone=%s", 
+                   (estado, nome, cpf, sintoma, horario, msg, telefone))
         conn.commit()
         enviar_whatsapp(telefone, resposta)
 
     except Exception as e:
-        print(f"❌ ERRO NO PROCESSO: {e}")
+        print(f"❌ ERRO: {e}")
     finally:
-        if conn:
-            conn.close() # ESSA LINHA IMPEDE O TRAVAMENTO
+        if conn: conn.close()
 
     return "OK", 200
 
@@ -189,19 +173,16 @@ def reset():
     try:
         conn = conectar()
         cur = conn.cursor()
-        cur.execute("DELETE FROM agenda")
-        cur.execute("DELETE FROM sessoes")
-        for h in ["08:00", "09:30", "11:00", "14:30", "16:00"]:
+        cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
+        for h in ["09:00", "11:00", "14:30", "16:00"]:
             cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
         conn.commit()
-        return "RESET OK", 200
+        return "✅ RESET OK", 200
     finally:
         if conn: conn.close()
 
 @app.route('/')
-def home():
-    return "🚀 AGENTE DE ELITE FINAL ONLINE", 200
+def home(): return "🚀 AGENTE ONLINE", 200
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
