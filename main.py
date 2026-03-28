@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO: AGENTE V5.2 SNIPER - ONLINE")
+print("🚀 IMPÉRIO DE SILÍCIO: AGENTE V6.0 SÊNIOR HUMANIZADO - ONLINE")
 
 app = Flask(__name__)
 
@@ -55,31 +55,29 @@ def inicializar_banco():
 inicializar_banco()
 
 # ==========================================
-# 🧠 O CÉREBRO (PROMPT SNIPER - 1 PERGUNTA POR VEZ)
+# 🧠 O CÉREBRO (PROMPT V6.0 - EMPATIA E EXCELÊNCIA OMNICHANNEL)
 # ==========================================
 def obter_prompt_sistema(vagas):
     return f"""
-Você é o Gerente Sênior de Triagem de uma clínica médica de altíssimo padrão. Você é direto, autoritário e conduz a conversa com pulso firme.
+Você é o Concierge Sênior de uma clínica médica de altíssimo padrão. Sua postura une Acolhimento Humanizado, Empatia, Comunicação Clara e Gestão Eficiente. Você conduz o paciente com segurança e cuidado.
 
-REGRA DE OURO MÁXIMA: VOCÊ SÓ PODE FAZER UMA (1) PERGUNTA POR MENSAGEM. NUNCA JUNTE DUAS ETAPAS. É ESTRITAMENTE PROIBIDO PEDIR SINTOMA E CPF NA MESMA MENSAGEM.
+REGRA MÁXIMA (O FUNIL SNIPER): Você faz APENAS UMA (1) pergunta por mensagem. NUNCA pule etapas ou peça vários dados de uma vez.
 
-O FUNIL DE VENDAS (Execute APENAS UM passo por vez e aguarde a resposta do paciente):
-PASSO 1: Se não sabe o primeiro nome de quem está falando, pergunte apenas o nome. (PARE E ESPERE A RESPOSTA)
-PASSO 2: Sabendo o nome, pergunte APENAS qual o sintoma ou dor do paciente. (PARE E ESPERE A RESPOSTA)
-PASSO 3: Sabendo o sintoma, ofereça as vagas abaixo e pergunte APENAS qual horário prefere. (PARE E ESPERE A RESPOSTA)
-PASSO 4: SOMENTE APÓS o paciente escolher o horário exato, exija o Nome Completo e o CPF para o bloqueio da vaga.
+AS 4 ETAPAS DO ATENDIMENTO DE EXCELÊNCIA:
+1. ACOLHIMENTO: Se não sabe o nome da pessoa, recepcione com empatia e pergunte o primeiro nome e como pode ajudar hoje. (ESPERE A RESPOSTA)
+2. TRIAGEM EMPÁTICA: Sabendo o nome, acolha a dor/preocupação do paciente com humanidade (ex: "Compreendo como isso é desconfortável", "A saúde da sua família é nossa prioridade") e pergunte APENAS qual o sintoma exato. (ESPERE A RESPOSTA)
+3. PROATIVIDADE NA AGENDA: Sabendo o sintoma, ofereça as opções de horários com clareza e pergunte APENAS qual ele prefere. (ESPERE A RESPOSTA)
+4. GESTÃO E FECHAMENTO: SOMENTE após ele escolher o horário, peça o Nome Completo e o CPF para garantir a vaga no sistema.
 
-PROIBIÇÕES ABSOLUTAS:
-- NUNCA diga "Claro, estou aqui para ajudar", "Compreendo", "Sinto muito", "Peço desculpas".
-- NUNCA peça CPF ou Nome Completo antes do PASSO 4.
-- Responda com no máximo 2 linhas. Seja curto e cirúrgico.
-- Ignore histórias pessoais, reclamações ou piadas. Foque exclusivamente no agendamento.
-- Para situações de risco à vida (ex: enfarte, suicídio), diga APENAS: "Para risco à vida, acione o 192 ou vá ao pronto-socorro imediatamente."
+DIRETRIZES DO SÊNIOR:
+- NUNCA dê diagnósticos. Você é o gestor do atendimento, não o médico.
+- SEJA CLARO E ÁGIL: Responda de forma acolhedora, mas em no máximo 3 linhas.
+- EMERGÊNCIA REAL (Dores no peito, risco de vida): Mostre empatia extrema, mas seja firme: "Sua vida é nossa prioridade absoluta. Por segurança, vá imediatamente ao pronto-socorro mais próximo ou ligue 192."
 
-VAGAS REAIS PARA HOJE/AMANHÃ: {vagas if vagas else "Sem vagas no momento."}
+VAGAS REAIS PARA HOJE/AMANHÃ: {vagas if vagas else "Nossa agenda está completa hoje, mas posso verificar um encaixe ou lista de espera prioritária para você."}
 
 FINALIZAÇÃO:
-Quando o paciente enviar o CPF no Passo 4, encerre dizendo EXATAMENTE: "Reserva confirmada para às [HORA]. Nossa equipe aguarda o paciente."
+Quando receber o CPF (Passo 4), encerre o atendimento com excelência: "Perfeito! Sua reserva para às [HORA] está confirmada. Cuidaremos muito bem de você aqui na clínica."
 """
 
 # ==========================================
@@ -99,21 +97,17 @@ def webhook():
         conn = conectar_banco()
         cur = conn.cursor()
 
-        # 1. BLOQUEIO DE DUPLICIDADE
         cur.execute("SELECT mensagem FROM historico_atendimento WHERE telefone=%s ORDER BY id DESC LIMIT 1", (telefone,))
         ultima = cur.fetchone()
         if ultima and ultima[0] == msg: return "OK", 200
 
-        # 2. SALVAR MENSAGEM DO USUÁRIO
         cur.execute("INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)", (telefone, "user", msg))
         conn.commit()
 
-        # 3. BUSCAR VAGAS
         cur.execute("SELECT hora FROM agenda_clinica WHERE disponivel = TRUE ORDER BY hora ASC LIMIT 5")
         vagas_db = cur.fetchall()
         vagas_formatadas = ", ".join([v[0].strftime('%H:%M') for v in vagas_db])
 
-        # 4. MEMÓRIA BLINDADA (15 mensagens)
         cur.execute("""
             SELECT perfil, mensagem FROM (
                 SELECT id, perfil, mensagem FROM historico_atendimento 
@@ -125,17 +119,16 @@ def webhook():
         for perfil, mensagem in cur.fetchall():
             historico_ia.append({"role": "assistant" if perfil == "assistant" else "user", "content": mensagem})
 
-        # 5. OPENAI (Temperatura baixa 0.4 para focar na obediência do funil)
+        # Temperatura 0.5: Equilíbrio perfeito entre seguir as regras (Sniper) e soar humano (Empatia)
         res = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-            json={"model": "gpt-3.5-turbo", "messages": historico_ia, "temperature": 0.4}
+            json={"model": "gpt-3.5-turbo", "messages": historico_ia, "temperature": 0.5}
         )
 
         if res.status_code == 200:
             resposta = res.json()['choices'][0]['message']['content']
             
-            # 6. SALVAR E ENVIAR
             cur.execute("INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)", (telefone, "assistant", resposta))
             conn.commit()
             
@@ -145,8 +138,7 @@ def webhook():
                 json={"phone": telefone, "message": resposta}
             )
 
-            # 7. BAIXA INTELIGENTE
-            if "reserva confirmada" in resposta.lower():
+            if "reserva para às" in resposta.lower() and "confirmada" in resposta.lower():
                 match = re.search(r'(\d{1,2}[:h]\d{2})', resposta)
                 if match:
                     h_extraida = match.group(1).replace('h', ':')
@@ -176,13 +168,13 @@ def reset():
         conn.commit()
         cur.close()
         conn.close()
-        return "✅ AGENDA SNIPER RESETADA COM SUCESSO!", 200
+        return "✅ AGENDA V6.0 SÊNIOR RESETADA COM SUCESSO!", 200
     except Exception as e:
         return f"Erro ao resetar: {e}", 500
 
 @app.route('/', methods=['GET'])
 def home():
-    return "🚀 IMPÉRIO DE SILÍCIO V5.2 SNIPER - ONLINE", 200
+    return "🚀 IMPÉRIO DE SILÍCIO V6.0 SÊNIOR HUMANIZADO - ONLINE", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
