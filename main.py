@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO: AGENTE V5.0 IMPERADOR - FULL POWER")
+print("🚀 IMPÉRIO DE SILÍCIO: AGENTE V5.1 AUTORIDADE MÁXIMA - ONLINE")
 
 app = Flask(__name__)
 
@@ -17,7 +17,6 @@ ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "").strip()
 ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "").strip()
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
-# Correção para o Heroku/Render (Postgres exige postgresql://)
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -28,10 +27,8 @@ def conectar_banco():
     return psycopg2.connect(DATABASE_URL, sslmode='require', connect_timeout=10)
 
 def inicializar_banco():
-    """Garante que a estrutura de tabelas exista no banco de dados"""
     conn = conectar_banco()
     cur = conn.cursor()
-    # Tabela de Histórico (Para memória de curto prazo)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS historico_atendimento (
             id SERIAL PRIMARY KEY, 
@@ -40,7 +37,6 @@ def inicializar_banco():
             mensagem TEXT
         )
     """)
-    # Tabela de Agenda (Para marcação real)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS agenda_clinica (
             id SERIAL PRIMARY KEY,
@@ -56,7 +52,6 @@ def inicializar_banco():
     cur.close()
     conn.close()
 
-# Inicia as tabelas assim que o código sobe
 inicializar_banco()
 
 # ==========================================
@@ -64,26 +59,20 @@ inicializar_banco()
 # ==========================================
 def obter_prompt_sistema(vagas):
     return f"""
-Você é o Coordenador-Geral de Atendimento da Clínica. Você tem 20 anos de experiência e não aceita ser enrolado. Você é a AUTORIDADE máxima aqui.
+Você é o Gerente Sênior de Triagem de uma clínica médica de altíssimo padrão.
+Sua missão é extrair sintomas, definir a especialidade e fechar a reserva do horário. Você tem controle ABSOLUTO da conversa. Você não é um assistente submisso, você é a autoridade que organiza a clínica.
 
-PERSONALIDADE:
-- Perspicaz: Identifica piadas, ironias e urgências reais imediatamente.
-- Líder: Você conduz a conversa. Se o paciente se perder, você o traz de volta com firmeza e educação.
-- Sem Robotização: Varie seu vocabulário. Nunca use as mesmas frases "prontas".
-- Humano: Demonstre que se importa com a família do paciente, mas mantenha o foco no agendamento.
+DIRETRIZES DE AUTORIDADE (OBRIGATÓRIO):
+1. NUNCA PEÇA DESCULPAS: É proibido dizer "Sinto muito", "Lamento", "Peço desculpas", "Compreendo" ou "Você tem razão". Se o paciente se confundir ou corrigir você, apenas ajuste a rota e faça a próxima pergunta direta.
+2. NENHUM PASSO SEM SINTOMA: Se o paciente pedir para agendar para terceiros (pai, mãe, etc), a sua ÚNICA ação deve ser descobrir o sintoma primeiro. Nunca ofereça horários ou peça CPF sem saber o que a pessoa está sentindo.
+3. CORTE AS DIVAGAÇÕES: Se o paciente contar histórias absurdas, fizer piadas ou falar de problemas pessoais não-médicos (ex: perdeu dinheiro, traições), ignore completamente essa parte. Foque APENAS no quadro clínico.
+4. TOM DE COMANDO: Você conduz. Termine suas mensagens sempre com uma diretriz ou pergunta fechada. Seja curto e direto (Máximo de 3 linhas).
+5. EMERGÊNCIA (Risco de Vida/Suicídio): Seja frio e processual. Diga apenas: "Para situações de risco à vida ou ideação suicida, acione o 192 ou vá ao pronto-socorro imediatamente. Não realizamos este tipo de triagem por aqui."
 
-REGRAS DE OURO:
-1. MÚLTIPLOS PEDIDOS: Se o paciente quer marcar para várias pessoas, aceite o desafio: "Entendi, André. Vamos organizar a agenda da família agora. Me conte quem é o primeiro e qual o sintoma, para eu definir os especialistas."
-2. MALÍCIA: Se o paciente falar algo absurdo (como o acidente do tio), foque na gravidade real do acidente, não na piada. 
-3. NÃO DIAGNOSTIQUE: Deixe claro que só o médico avalia, e use isso como gancho para fechar o horário.
-4. PRIORIDADE: Dor no peito ou falta de ar? Pare tudo e mande para o 192/Emergência.
+VAGAS REAIS PARA HOJE/AMANHÃ: {vagas if vagas else "Sem vagas no momento."}
 
-VAGAS REAIS PARA HOJE/AMANHÃ:
-{vagas if vagas else "Consulte a recepção para possíveis encaixes de emergência."}
-
-CONFIRMAÇÃO FINAL:
-Só confirme após receber Nome e CPF. Diga algo natural como: 
-"Tudo certo, [NOME]! O horário das [HORA] está oficialmente bloqueado para você. Estaremos prontos para te receber."
+FINALIZAÇÃO:
+Só confirme a reserva após coletar o SINTOMA, aprovar o HORÁRIO e receber NOME e CPF. Diga exatamente: "Reserva confirmada para às [HORA]. Nossa equipe aguarda o paciente."
 """
 
 # ==========================================
@@ -103,7 +92,7 @@ def webhook():
         conn = conectar_banco()
         cur = conn.cursor()
 
-        # 1. BLOQUEIO DE DUPLICIDADE (Z-API Delay)
+        # 1. BLOQUEIO DE DUPLICIDADE
         cur.execute("SELECT mensagem FROM historico_atendimento WHERE telefone=%s ORDER BY id DESC LIMIT 1", (telefone,))
         ultima = cur.fetchone()
         if ultima and ultima[0] == msg: return "OK", 200
@@ -112,12 +101,12 @@ def webhook():
         cur.execute("INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)", (telefone, "user", msg))
         conn.commit()
 
-        # 3. BUSCAR VAGAS REAIS NO BANCO
+        # 3. BUSCAR VAGAS
         cur.execute("SELECT hora FROM agenda_clinica WHERE disponivel = TRUE ORDER BY hora ASC LIMIT 5")
         vagas_db = cur.fetchall()
         vagas_formatadas = ", ".join([v[0].strftime('%H:%M') for v in vagas_db])
 
-        # 4. MEMÓRIA DE ELEFANTE (Últimas 15 mensagens para contexto total)
+        # 4. MEMÓRIA DE ELEFANTE (15 mensagens)
         cur.execute("""
             SELECT perfil, mensagem FROM (
                 SELECT id, perfil, mensagem FROM historico_atendimento 
@@ -129,29 +118,28 @@ def webhook():
         for perfil, mensagem in cur.fetchall():
             historico_ia.append({"role": "assistant" if perfil == "assistant" else "user", "content": mensagem})
 
-        # 5. CHAMADA OPENAI (Temperatura 0.6 para mais "malícia" e variação)
+        # 5. OPENAI (Temperatura ajustada para 0.5 para garantir firmeza e menos invenção)
         res = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-            json={"model": "gpt-3.5-turbo", "messages": historico_ia, "temperature": 0.6}
+            json={"model": "gpt-3.5-turbo", "messages": historico_ia, "temperature": 0.5}
         )
 
         if res.status_code == 200:
             resposta = res.json()['choices'][0]['message']['content']
             
-            # 6. SALVAR RESPOSTA DA IA
+            # 6. SALVAR E ENVIAR
             cur.execute("INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)", (telefone, "assistant", resposta))
             conn.commit()
             
-            # 7. ENVIAR VIA Z-API
             requests.post(
                 f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text",
                 headers={"Client-Token": ZAPI_CLIENT_TOKEN},
                 json={"phone": telefone, "message": resposta}
             )
 
-            # 8. BAIXA INTELIGENTE NA AGENDA
-            if "agendamento" in resposta.lower() and ("bloqueado" in resposta.lower() or "garantido" in resposta.lower() or "sucesso" in resposta.lower()):
+            # 7. BAIXA INTELIGENTE
+            if "reserva confirmada" in resposta.lower() or "bloqueado" in resposta.lower():
                 match = re.search(r'(\d{1,2}[:h]\d{2})', resposta)
                 if match:
                     h_extraida = match.group(1).replace('h', ':')
@@ -167,11 +155,10 @@ def webhook():
     return "OK", 200
 
 # ==========================================
-# 🛠️ UTILITÁRIOS (RESET E HOME)
+# 🛠️ UTILITÁRIOS
 # ==========================================
 @app.route('/reset-agenda', methods=['GET'])
 def reset():
-    """Limpa e repopula a agenda para novos testes"""
     try:
         conn = conectar_banco()
         cur = conn.cursor()
@@ -182,15 +169,14 @@ def reset():
         conn.commit()
         cur.close()
         conn.close()
-        return "✅ AGENDA IMPERADOR RESETADA E PRONTA!", 200
+        return "✅ AGENDA AUTORIDADE RESETADA!", 200
     except Exception as e:
         return f"Erro ao resetar: {e}", 500
 
 @app.route('/', methods=['GET'])
 def home():
-    return "🚀 IMPÉRIO DE SILÍCIO V5.0 - STATUS: ONLINE E DOMINANDO", 200
+    return "🚀 IMPÉRIO DE SILÍCIO V5.1 - AUTORIDADE MÁXIMA ONLINE", 200
 
 if __name__ == '__main__':
-    # Porta padrão para Render/Heroku ou 10000 local
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
