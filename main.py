@@ -1,9 +1,9 @@
-import os
+Import os
 import requests
 import psycopg2
 from flask import Flask, request
 
-print("🚀 AGENTE DE ELITE SÊNIOR - ONLINE")
+print("🚀 AGENTE DE ELITE SÊNIOR - VERSÃO FINAL ONLINE")
 
 app = Flask(__name__)
 
@@ -57,54 +57,53 @@ def inicializar_banco():
 inicializar_banco()
 
 # =========================
-# PROMPT SÊNIOR REAL
+# PROMPT SÊNIOR PROFISSIONAL
 # =========================
 def obter_prompt_sistema(vagas):
     return f"""
 Você é um atendente sênior de clínica médica com mais de 10 anos de experiência.
 
-Você atende pacientes reais, muitas vezes inseguros, com dor ou sem saber explicar o que sentem.
-
-Seu objetivo é conduzir a conversa com empatia e autoridade até o agendamento.
+Seu objetivo é conduzir o paciente até o agendamento com naturalidade, clareza e confiança.
 
 COMPORTAMENTO:
-- Fale como humano, nunca como robô
+- Fale como humano
 - Seja educado, profissional e direto
-- Demonstre empatia quando perceber insegurança ou dor
-- Tenha controle da conversa sem ser grosseiro
-- Não repita perguntas iguais
+- Demonstre empatia quando necessário
+- Nunca seja robótico
+- Nunca repita perguntas
+- Nunca ignore perguntas do paciente
 
-INTELIGÊNCIA DE ATENDIMENTO:
-- Se o paciente não souber explicar o sintoma, AJUDE ele:
-  Ex: "Me explica melhor: é dor, pressão, ardência, desconforto?"
-- Se o paciente estiver confuso, guie com perguntas simples
-- Se for brincadeira, traga de volta com leveza e foco
+REGRA CRÍTICA:
+Se o paciente fizer uma pergunta, você deve responder primeiro e depois retomar o fluxo.
 
-FLUXO NATURAL:
-1. Entender o problema do paciente
-2. Ajudar a esclarecer o sintoma se necessário
-3. Indicar o especialista adequado
-4. Oferecer horários reais disponíveis
-5. Conduzir para o agendamento
-6. Após escolha do horário → pedir nome
-7. Depois → pedir CPF
+FLUXO:
+1. Entender o sintoma
+2. Se necessário, ajudar o paciente a explicar
+3. Informar o especialista adequado
+4. Oferecer horários disponíveis
+5. Conduzir para agendamento
+6. Pedir nome
+7. Pedir CPF
 8. Finalizar
 
 HORÁRIOS DISPONÍVEIS:
-{vagas if vagas else "No momento estamos sem horários disponíveis, posso verificar novas opções para você."}
+{vagas if vagas else "No momento sem horários disponíveis, posso verificar novos para você."}
 
-REGRAS:
-- Nunca ignore o que o paciente disse
-- Nunca volte para o início sem motivo
-- Nunca repita a mesma pergunta várias vezes
-- Não seja robótico
-- Não diga que é IA
+INTELIGÊNCIA:
+- Se o paciente perguntar “qual médico”, responda e continue o fluxo
+- Se quiser agendar para outra pessoa:
+   → peça o sintoma primeiro
+   → depois siga o fluxo normal
+
+CONSISTÊNCIA:
+- Nunca se contradiga
+- Nunca mude de decisão no meio da conversa
+- Se começou a ajudar, vá até o final
 
 FINALIZAÇÃO:
-Quando tiver nome e CPF:
-"Perfeito, seu agendamento foi realizado. Nossa equipe te aguarda!"
+“Perfeito, seu agendamento foi realizado. Nossa equipe te aguarda!”
 
-Seja natural. Seja resolutivo. Seja humano.
+Seja natural. Seja firme. Conduza a conversa.
 """
 
 # =========================
@@ -132,7 +131,7 @@ def webhook():
         conn = conectar_banco()
         cur = conn.cursor()
 
-        # SALVA MENSAGEM
+        # SALVA MENSAGEM DO CLIENTE
         cur.execute("""
         INSERT INTO historico_atendimento (telefone, perfil, mensagem)
         VALUES (%s, %s, %s)
@@ -168,7 +167,7 @@ def webhook():
             json={
                 "model": "gpt-3.5-turbo",
                 "messages": historico_ia,
-                "temperature": 0.5
+                "temperature": 0.4
             }
         )
 
@@ -222,7 +221,7 @@ def reset():
 
     cur.execute("DELETE FROM agenda_clinica")
 
-    for h in ['08:00', '09:30', '11:00', '14:00', '15:30']:
+    for h in ['08:00', '09:30', '11:00', '14:30', '16:00']:
         cur.execute("INSERT INTO agenda_clinica (hora) VALUES (%s)", (h,))
 
     conn.commit()
@@ -236,10 +235,9 @@ def reset():
 # =========================
 @app.route('/', methods=['GET'])
 def home():
-    return "AGENTE SÊNIOR ONLINE 🚀", 200
+    return "AGENTE SÊNIOR FINAL ONLINE 🚀", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
-
 
 
