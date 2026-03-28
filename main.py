@@ -1,21 +1,21 @@
-Import os
+import os
 import requests
 import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 AGENTE DE ELITE CONTROLADO - FINAL ATIVO")
+print("🚀 AGENTE DE ELITE FINAL - CONTROLE TOTAL ATIVO")
 
 app = Flask(__name__)
 
 # =========================
 # CONFIG
 # =========================
-OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
-ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE_ID", "").strip()
-ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "").strip()
-ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "").strip()
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
+ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE_ID", "")
+ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "")
+ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -24,95 +24,74 @@ if DATABASE_URL.startswith("postgres://"):
 # BANCO
 # =========================
 def conectar():
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
+    return psycopg2.connect(DATABASE_URL, sslmode='require', connect_timeout=10)
 
 def init_db():
-    conn = conectar()
-    cur = conn.cursor()
+    try:
+        conn = conectar()
+        cur = conn.cursor()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS sessoes (
-        telefone TEXT PRIMARY KEY,
-        estado TEXT,
-        nome TEXT,
-        cpf TEXT,
-        horario TEXT
-    )
-    """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS sessoes (
+            telefone TEXT PRIMARY KEY,
+            estado TEXT,
+            nome TEXT,
+            cpf TEXT,
+            sintoma TEXT,
+            horario TEXT,
+            ultima_msg TEXT
+        )
+        """)
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS agenda (
-        id SERIAL PRIMARY KEY,
-        hora TEXT,
-        disponivel BOOLEAN DEFAULT TRUE
-    )
-    """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS agenda (
+            id SERIAL PRIMARY KEY,
+            hora TEXT,
+            disponivel BOOLEAN DEFAULT TRUE
+        )
+        """)
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        print("✅ BANCO PRONTO")
+
+    except Exception as e:
+        print("❌ ERRO BANCO:", e)
 
 init_db()
 
 # =========================
-# UTIL
+# AUXILIARES
 # =========================
-def enviar(telefone, msg):
-    requests.post(
-        f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text",
-        headers={"Client-Token": ZAPI_CLIENT_TOKEN},
-        json={"phone": telefone, "message": msg}
-    )
-
-def detectar_emergencia(msg):
-    gatilhos = ["me matar", "suicidio", "vou pular", "quero morrer"]
-    return any(p in msg.lower() for p in gatilhos)
-
-def detectar_fora_escopo(msg):
-    gatilhos = ["dinheiro", "pix", "emprestado"]
-    return any(p in msg.lower() for p in gatilhos)
-
-def extrair_horario(msg):
-    match = re.search(r'\d{2}:\d{2}', msg)
+def detectar_horario(msg):
+    match = re.search(r'\b(0?[0-9]|1[0-9]|2[0-3])\b', msg)
     return match.group() if match else None
 
-def cpf_valido(cpf):
-    return bool(re.fullmatch(r'\d{11}', cpf))
+def validar_cpf(cpf):
+    return len(re.sub(r'\D', '', cpf)) == 11
+
+def enviar_whatsapp(telefone, mensagem):
+    try:
+        requests.post(
+            f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text",
+            headers={"Client-Token": ZAPI_CLIENT_TOKEN},
+            json={"phone": telefone, "message": mensagem},
+            timeout=10
+        )
+    except Exception as e:
+        print("Erro envio WhatsApp:", e)
 
 # =========================
-# PROMPT (IA AUXILIAR)
-# =========================
-def gerar_resposta_ia(msg):
-    prompt = f"""
-Você é um atendente sênior de clínica.
-
-Responda com:
-- Empatia
-- Clareza
-- Objetividade
-
-Mensagem do paciente:
-{msg}
-"""
-
-    res = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-        json={
-            "model": "gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.5
-        }
-    )
-
-    return res.json()['choices'][0]['message']['content']
-
-# =========================
-# FLUXO CONTROLADO
+# WEBHOOK
 # =========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True)
+    except:
+        return "OK", 200
 
     if not data or data.get("fromMe"):
         return "OK", 200
@@ -120,96 +99,109 @@ def webhook():
     telefone = data.get("phone", "").split("@")[0]
     msg = data.get("text", {}).get("message", "") if isinstance(data.get("text"), dict) else data.get("message", "")
 
+    if not telefone or not msg:
+        return "OK", 200
+
     conn = conectar()
     cur = conn.cursor()
 
-    cur.execute("SELECT estado, nome, cpf, horario FROM sessoes WHERE telefone=%s", (telefone,))
-    row = cur.fetchone()
+    # =========================
+    # BUSCA SESSÃO
+    # =========================
+    cur.execute("SELECT * FROM sessoes WHERE telefone=%s", (telefone,))
+    sessao = cur.fetchone()
 
-    if not row:
-        cur.execute("INSERT INTO sessoes (telefone, estado) VALUES (%s,'INICIO')", (telefone,))
+    if not sessao:
+        cur.execute("INSERT INTO sessoes (telefone, estado) VALUES (%s, 'TRIAGEM')", (telefone,))
         conn.commit()
-        estado, nome, cpf, horario = "INICIO", None, None, None
+        estado = 'TRIAGEM'
+        nome = cpf = sintoma = horario = ultima_msg = None
     else:
-        estado, nome, cpf, horario = row
+        _, estado, nome, cpf, sintoma, horario, ultima_msg = sessao
 
     # =========================
-    # BLOQUEIOS CRÍTICOS
+    # ANTI DUPLICAÇÃO
     # =========================
-    if detectar_emergencia(msg):
-        enviar(telefone, "Sua vida é importante. Ligue 188 agora (CVV). Atendimento 24h.")
+    if msg == ultima_msg:
+        cur.close()
+        conn.close()
         return "OK", 200
 
-    if detectar_fora_escopo(msg):
-        enviar(telefone, "Posso te ajudar com agendamentos médicos. Vamos focar nisso.")
-        return "OK", 200
+    cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg, telefone))
+    conn.commit()
 
     # =========================
-    # FLUXO PRINCIPAL
+    # BUSCA VAGAS
     # =========================
-    if estado == "INICIO":
-        enviar(telefone, "Me diga o que você está sentindo para eu te direcionar corretamente.")
-        novo_estado = "SINTOMA"
+    cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
+    vagas_lista = [v[0] for v in cur.fetchall()]
+    vagas = ", ".join(vagas_lista) if vagas_lista else "Agenda cheia"
 
-    elif estado == "SINTOMA":
-        especialidade = "clínico geral"
-        if "estomago" in msg.lower():
-            especialidade = "gastroenterologista"
-        elif "olho" in msg.lower():
-            especialidade = "oftalmologista"
+    resposta = ""
 
-        cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE LIMIT 3")
-        horarios = [h[0] for h in cur.fetchall()]
-        texto = ", ".join(horarios) if horarios else "Sem horários disponíveis"
+    # =========================
+    # MOTOR CONTROLADO
+    # =========================
+    if estado == "TRIAGEM":
+        sintoma = msg
+        estado = "AGENDAMENTO"
+        resposta = f"Entendi. Para isso, o ideal é um clínico. Tenho horários: {vagas}. Qual você escolhe?"
 
-        enviar(telefone, f"Para seu caso, o ideal é {especialidade}. Tenho: {texto}. Qual horário você escolhe?")
-        novo_estado = "HORARIO"
+    elif estado == "AGENDAMENTO":
+        horario_detectado = detectar_horario(msg)
 
-    elif estado == "HORARIO":
-        h = extrair_horario(msg)
+        if not horario_detectado:
+            resposta = f"Escolha um horário válido: {vagas}"
+        else:
+            horario = f"{horario_detectado}:00"
+            estado = "DADOS_NOME"
+            resposta = "Perfeito. Me informe seu nome completo."
 
-        if not h:
-            enviar(telefone, "Escolha um horário válido no formato 14:30.")
-            return "OK", 200
+    elif estado == "DADOS_NOME":
+        nome = msg
+        estado = "DADOS_CPF"
+        resposta = "Agora preciso do seu CPF (apenas números)."
 
-        cur.execute("UPDATE sessoes SET horario=%s WHERE telefone=%s", (h, telefone))
-        enviar(telefone, "Perfeito. Me informe seu nome completo.")
-        novo_estado = "NOME"
+    elif estado == "DADOS_CPF":
+        if not validar_cpf(msg):
+            resposta = "CPF inválido. Digite os 11 números."
+        else:
+            cpf = msg
+            estado = "CONFIRMADO"
 
-    elif estado == "NOME":
-        cur.execute("UPDATE sessoes SET nome=%s WHERE telefone=%s", (msg, telefone))
-        enviar(telefone, "Agora preciso do seu CPF (11 dígitos).")
-        novo_estado = "CPF"
+            cur.execute("""
+            UPDATE agenda 
+            SET disponivel=FALSE 
+            WHERE hora=%s AND disponivel=TRUE
+            """, (horario,))
 
-    elif estado == "CPF":
-        if not cpf_valido(msg):
-            enviar(telefone, "CPF inválido. Envie os 11 números.")
-            return "OK", 200
-
-        cur.execute("UPDATE sessoes SET cpf=%s WHERE telefone=%s", (msg, telefone))
-
-        # CONFIRMAÇÃO REAL
-        cur.execute("UPDATE agenda SET disponivel=FALSE WHERE hora=%s AND disponivel=TRUE LIMIT 1", (horario,))
-        enviar(telefone, "Agendamento confirmado. Nossa equipe te aguarda.")
-        cur.execute("DELETE FROM sessoes WHERE telefone=%s", (telefone,))
-        novo_estado = None
+            resposta = f"Agendamento confirmado para {horario}. Nossa equipe te aguarda."
 
     else:
-        resposta = gerar_resposta_ia(msg)
-        enviar(telefone, resposta)
-        return "OK", 200
+        resposta = "Meu foco é seu agendamento. Vamos continuar."
 
-    if novo_estado:
-        cur.execute("UPDATE sessoes SET estado=%s WHERE telefone=%s", (novo_estado, telefone))
+    # =========================
+    # ATUALIZA SESSÃO
+    # =========================
+    cur.execute("""
+    UPDATE sessoes 
+    SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s
+    WHERE telefone=%s
+    """, (estado, nome, cpf, sintoma, horario, telefone))
 
     conn.commit()
     cur.close()
     conn.close()
 
+    # =========================
+    # ENVIA RESPOSTA
+    # =========================
+    enviar_whatsapp(telefone, resposta)
+
     return "OK", 200
 
 # =========================
-# RESET
+# RESET AGENDA
 # =========================
 @app.route('/reset', methods=['GET'])
 def reset():
@@ -217,18 +209,32 @@ def reset():
     cur = conn.cursor()
 
     cur.execute("DELETE FROM agenda")
-    for h in ["09:00","11:00","14:30","16:00"]:
+    cur.execute("DELETE FROM sessoes")
+
+    for h in ["09:00", "11:00", "14:30", "16:00"]:
         cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return "Agenda resetada", 200
+    return "RESET OK", 200
 
-@app.route('/')
+# =========================
+# HOME
+# =========================
+@app.route('/', methods=['GET'])
 def home():
-    return "AGENTE ELITE CONTROLADO ONLINE", 200
+    return "AGENTE DE ELITE FINAL ONLINE 🚀", 200
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+# =========================
+# START SERVIDOR (IMPORTANTE)
+# =========================
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+
+
+
+Acho e esse codigo esta perfeito, oque me diz ?
