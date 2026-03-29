@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 AGENTE ELITE V7 - OPERAÇÃO BLINDADA ONLINE")
+print("🚀 AGENTE ELITE V7 - OPERAÇÃO MULTI-AGENDAMENTO ONLINE")
 
 app = Flask(__name__)
 
@@ -119,14 +119,12 @@ def webhook():
             print("⚠️ MSG DUPLICADA IGNORADA")
             return "OK", 200
 
-        # CONVERSÃO ABSOLUTA DE DADOS (Correção do erro datetime.time)
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE AND hora IS NOT NULL ORDER BY hora LIMIT 4")
         raw_vagas = cur.fetchall()
         
         vagas = []
         for v in raw_vagas:
             if v[0] is not None:
-                # Se o banco retornar objeto de tempo, converte para HH:MM. Se for texto, pega os 5 primeiros caracteres.
                 if hasattr(v[0], 'strftime'):
                     vagas.append(v[0].strftime('%H:%M'))
                 else:
@@ -136,7 +134,7 @@ def webhook():
 
         resposta = ""
 
-        if not vagas and estado != "CONFIRMADO":
+        if not vagas and estado not in ["CONFIRMADO", "CPF"]:
             resposta = "Nossa agenda lotou no momento. Deseja entrar na lista de espera?"
             estado = "TRIAGEM"
         elif estado == "TRIAGEM":
@@ -154,11 +152,11 @@ def webhook():
                     resposta = f"Por favor, escolha um horário válido: {vagas_txt}"
                 else:
                     estado = "NOME"
-                    resposta = f"Perfeito, horário de {horario} pré-reservado. Qual o seu nome completo?"
+                    resposta = f"Perfeito, horário de {horario} pré-reservado. Qual o nome completo do paciente?"
         elif estado == "NOME":
             nome = msg
             estado = "CPF"
-            resposta = f"Obrigado, {nome.split()[0]}. Para finalizar a ficha, digite seu CPF (apenas os 11 números)."
+            resposta = f"Obrigado, {nome.split()[0]}. Para finalizar a ficha, digite o CPF (apenas os 11 números)."
         elif estado == "CPF":
             cpf_limpo = re.sub(r'\D', '', msg)
             if len(cpf_limpo) != 11:
@@ -166,15 +164,27 @@ def webhook():
             else:
                 cpf = cpf_limpo
                 estado = "CONFIRMADO"
-                # Usa string formatada para garantir compatibilidade com o banco
                 cur.execute("""
                     UPDATE agenda 
                     SET disponivel=FALSE 
                     WHERE id IN (SELECT id FROM agenda WHERE CAST(hora AS TEXT) LIKE %s AND disponivel=TRUE LIMIT 1)
                 """, (f"{horario}%",))
                 resposta = f"Agendamento confirmado para {horario}. Nossa equipe aguarda você."
-        else:
-            resposta = "Seu agendamento já está confirmado no sistema."
+        elif estado == "CONFIRMADO":
+            # FILTRO DE REENTRADA MULTI-AGENDAMENTO
+            if any(palavra in msg.lower() for palavra in ["obrigad", "ok", "valeu", "tchau", "certo", "beleza", "show", "agradeço"]):
+                resposta = "Nós que agradecemos! Se precisar agendar para mais alguém, é só me avisar."
+            else:
+                if not vagas:
+                    resposta = "Identifiquei que você deseja marcar para outra pessoa, mas nossa agenda acabou de lotar. Deseja entrar na lista de espera?"
+                    estado = "TRIAGEM"
+                else:
+                    nome = None
+                    cpf = None
+                    horario = None
+                    sintoma = msg
+                    estado = "AGENDAMENTO"
+                    resposta = f"Com certeza, vamos agendar para outra pessoa! Horários ainda disponíveis: {vagas_txt}. Qual você prefere?"
 
         cur.execute("""
             UPDATE sessoes 
