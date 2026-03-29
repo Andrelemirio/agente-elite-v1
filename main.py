@@ -88,7 +88,6 @@ def webhook():
         if "@" in telefone:
             telefone = telefone.split("@")[0]
 
-        # Extração blindada da mensagem
         msg = ""
         if "text" in data:
             if isinstance(data["text"], dict):
@@ -120,8 +119,9 @@ def webhook():
             print("⚠️ MSG DUPLICADA IGNORADA")
             return "OK", 200
 
+        # CORREÇÃO APLICADA AQUI: Conversão absoluta para String (str) e formatação HH:MM
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE AND hora IS NOT NULL ORDER BY hora LIMIT 4")
-        vagas = [v[0] for v in cur.fetchall() if v[0] is not None]
+        vagas = [str(v[0])[:5] for v in cur.fetchall() if v[0] is not None]
         vagas_txt = ", ".join(vagas) if vagas else "Agenda lotada"
 
         resposta = ""
