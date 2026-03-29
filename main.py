@@ -32,21 +32,30 @@ def init_db():
         conn = conectar()
         cur = conn.cursor()
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS sessoes (
-            telefone TEXT PRIMARY KEY, estado TEXT, nome TEXT, cpf TEXT, sintoma TEXT, horario TEXT, ultima_msg TEXT
-        )
+            CREATE TABLE IF NOT EXISTS sessoes (
+                telefone TEXT PRIMARY KEY, 
+                estado TEXT, 
+                nome TEXT, 
+                cpf TEXT, 
+                sintoma TEXT, 
+                horario TEXT, 
+                ultima_msg TEXT
+            )
         """)
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS agenda (
-            id SERIAL PRIMARY KEY, hora TEXT, disponivel BOOLEAN DEFAULT TRUE
-        )
+            CREATE TABLE IF NOT EXISTS agenda (
+                id SERIAL PRIMARY KEY, 
+                hora TEXT, 
+                disponivel BOOLEAN DEFAULT TRUE
+            )
         """)
         conn.commit()
         print("✅ BANCO OK")
     except Exception as e:
-        print("❌ ERRO BANCO:", e)
+        print(f"❌ ERRO BANCO: {e}")
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()
 
 init_db()
 
@@ -56,26 +65,41 @@ init_db()
 def enviar_whatsapp(telefone, mensagem):
     try:
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
-        res = requests.post(url, headers={"Client-Token": ZAPI_CLIENT_TOKEN}, json={"phone": telefone, "message": mensagem}, timeout=10)
-        print("📤 ENVIO WHATS:", res.status_code)
+        headers = {"Client-Token": ZAPI_CLIENT_TOKEN}
+        payload = {"phone": telefone, "message": mensagem}
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        print(f"📤 ENVIO WHATS: {res.status_code}")
     except Exception as e:
-        print("❌ ERRO ENVIO:", e)
+        print(f"❌ ERRO ENVIO: {e}")
 
 # =========================
 # WEBHOOK PRINCIPAL
 # =========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    print("\n📩 NOVA REQUISIÇÃO RECEBIDA DA Z-API!") # SE ISSO NÃO APARECER NO LOG, A Z-API ESTÁ DESCONECTADA
+    print("\n📩 NOVA REQUISIÇÃO RECEBIDA DA Z-API!")
     conn = None
     try:
         data = request.get_json(force=True)
-        if not data or data.get("fromMe"): return "OK", 200
+        if not data or data.get("fromMe"): 
+            return "OK", 200
 
-        telefone = data.get("phone", "").split("@")[0]
-        msg = data.get("text", {}).get("message", "") if isinstance(data.get("text"), dict) else data.get("message", "")
+        telefone = data.get("phone", "")
+        if "@" in telefone:
+            telefone = telefone.split("@")[0]
+
+        # Extração blindada da mensagem
+        msg = ""
+        if "text" in data:
+            if isinstance(data["text"], dict):
+                msg = data["text"].get("message", "")
+            else:
+                msg = str(data["text"])
+        elif "message" in data:
+            msg = str(data["message"])
         
-        if not telefone or not msg: return "OK", 200
+        if not telefone or not msg: 
+            return "OK", 200
 
         print(f"📞 TEL: {telefone} | 💬 MSG: {msg}")
 
@@ -102,51 +126,64 @@ def webhook():
 
         resposta = ""
 
-        if not vagas:
-            resposta = "Nossa agenda lotou. Deseja entrar na lista de espera?"
+        if not vagas and estado != "CONFIRMADO":
+            resposta = "Nossa agenda lotou no momento. Deseja entrar na lista de espera?"
             estado = "TRIAGEM"
         elif estado == "TRIAGEM":
-            sintoma, estado = msg, "AGENDAMENTO"
-            resposta = f"Entendi. Para isso, o ideal é o Clínico. Horários disponíveis: {vagas_txt}. Qual prefere?"
+            sintoma = msg
+            estado = "AGENDAMENTO"
+            resposta = f"Entendi a sua necessidade. Para isso, o ideal é o Clínico. Horários disponíveis: {vagas_txt}. Qual você prefere?"
         elif estado == "AGENDAMENTO":
             match = re.search(r'(\d{1,2})', msg)
             if not match:
-                resposta = f"Escolha um horário válido: {vagas_txt}"
+                resposta = f"Por favor, escolha um horário válido: {vagas_txt}"
             else:
                 h = match.group(1).zfill(2)
                 horario = next((v for v in vagas if v.startswith(h)), None)
                 if not horario:
-                    resposta = f"Escolha um horário válido: {vagas_txt}"
+                    resposta = f"Por favor, escolha um horário válido: {vagas_txt}"
                 else:
-                    estado, resposta = "NOME", f"Perfeito, {horario} reservado. Qual seu nome completo?"
+                    estado = "NOME"
+                    resposta = f"Perfeito, horário de {horario} pré-reservado. Qual o seu nome completo?"
         elif estado == "NOME":
-            nome, estado = msg, "CPF"
-            resposta = "Digite seu CPF (11 números)."
+            nome = msg
+            estado = "CPF"
+            resposta = f"Obrigado, {nome.split()[0]}. Para finalizar a ficha, digite seu CPF (apenas os 11 números)."
         elif estado == "CPF":
             cpf_limpo = re.sub(r'\D', '', msg)
             if len(cpf_limpo) != 11:
-                resposta = "CPF inválido. Digite os 11 números."
+                resposta = "CPF inválido. Digite os 11 números corretamente."
             else:
-                cpf, estado = cpf_limpo, "CONFIRMADO"
-                cur.execute("UPDATE agenda SET disponivel=FALSE WHERE id IN (SELECT id FROM agenda WHERE hora=%s AND disponivel=TRUE LIMIT 1)", (horario,))
-                resposta = f"Agendamento confirmado para {horario}. Equipe aguardando."
+                cpf = cpf_limpo
+                estado = "CONFIRMADO"
+                cur.execute("""
+                    UPDATE agenda 
+                    SET disponivel=FALSE 
+                    WHERE id IN (SELECT id FROM agenda WHERE hora=%s AND disponivel=TRUE LIMIT 1)
+                """, (horario,))
+                resposta = f"Agendamento confirmado para {horario}. Nossa equipe aguarda você."
         else:
-            resposta = "Seu agendamento já está confirmado."
+            resposta = "Seu agendamento já está confirmado no sistema."
 
-        cur.execute("UPDATE sessoes SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s WHERE telefone=%s", 
-                    (estado, nome, cpf, sintoma, horario, msg, telefone))
+        cur.execute("""
+            UPDATE sessoes 
+            SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s 
+            WHERE telefone=%s
+        """, (estado, nome, cpf, sintoma, horario, msg, telefone))
+        
         conn.commit()
         enviar_whatsapp(telefone, resposta)
 
     except Exception as e:
-        print("❌ ERRO GERAL:", e)
+        print(f"❌ ERRO GERAL NO WEBHOOK: {e}")
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()
 
     return "OK", 200
 
 # =========================
-# RESET
+# ROTAS DE SUPORTE
 # =========================
 @app.route('/reset', methods=['GET'])
 def reset():
@@ -159,12 +196,16 @@ def reset():
             cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
         conn.commit()
         return "✅ RESET OK", 200
+    except Exception as e:
+        return f"❌ ERRO NO RESET: {e}", 500
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()
 
 @app.route('/')
 def home():
-    return "🚀 AGENTE V7 ONLINE", 200
+    return "🚀 AGENTE V7 ONLINE - IMPÉRIO DE SILÍCIO", 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
