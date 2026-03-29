@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 AGENTE V8 - RECEPCIONISTA SÊNIOR & TRIAGEM INTELIGENTE ONLINE")
+print("🚀 AGENTE V9 - ATENDENTE SÊNIOR & INTELIGÊNCIA DE CONTEXTO")
 
 app = Flask(__name__)
 
@@ -72,7 +72,7 @@ def enviar_whatsapp(telefone, mensagem):
         print(f"❌ ERRO ENVIO: {e}")
 
 # =========================
-# WEBHOOK PRINCIPAL (MOTOR DE FLUXO)
+# WEBHOOK PRINCIPAL (MOTOR DE FLUXO SÊNIOR)
 # =========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -114,10 +114,10 @@ def webhook():
         if msg == ultima_msg:
             return "OK", 200
 
-        # REGRA CRÍTICA 1: CONTROLE DE CONVERSA (PAUSA)
-        palavras_pausa = ["vou ver", "espera", "já te falo", "ja te falo", "vou perguntar", "um momento", "aguarda", "pera"]
+        # REGRA CRÍTICA: CONTROLE DE CONVERSA (PAUSA)
+        palavras_pausa = ["vou ver", "espera", "já te falo", "ja te falo", "vou perguntar", "um momento", "aguarda", "pera", "calma"]
         if any(p in msg.lower() for p in palavras_pausa):
-            resposta_pausa = "Perfeito, fico no aguardo. Me avise quando tiver a informação para continuarmos."
+            resposta_pausa = "Perfeito, fico no aguardo. Me avise quando tiver a informação para continuarmos o agendamento."
             cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg, telefone))
             conn.commit()
             enviar_whatsapp(telefone, resposta_pausa)
@@ -135,14 +135,22 @@ def webhook():
                 else:
                     vagas.append(str(v[0])[:5])
 
-        vagas_txt = ", ".join(vagas) if vagas else "Agenda lotada"
+        vagas_txt = ", ".join(vagas) if vagas else ""
 
         resposta = ""
 
-        # REGRA CRÍTICA 2: FLUXO OBRIGATÓRIO & TRIAGEM INTELIGENTE
-        if not vagas and estado not in ["CONFIRMADO", "CPF", "NOME"]:
-            resposta = "Nossa agenda de hoje acabou de lotar. Deseja que eu adicione o paciente na lista de espera prioritária?"
-            estado = "TRIAGEM"
+        # GESTÃO DE AGENDA LOTADA E LISTA DE ESPERA
+        if not vagas and estado not in ["CONFIRMADO", "CPF", "NOME", "AGUARDANDO_ESPERA"]:
+            resposta = "No momento nossa agenda para hoje está completamente preenchida. Posso te colocar na lista de espera prioritária?"
+            estado = "AGUARDANDO_ESPERA"
+
+        elif estado == "AGUARDANDO_ESPERA":
+            if any(p in msg.lower() for p in ["sim", "pode", "quero", "ok", "por favor", "coloca", "pode ser"]):
+                resposta = "Combinado. Adicionei o paciente na nossa lista de espera prioritária. Assim que surgir uma desistência ou novo horário, entro em contato imediatamente."
+                estado = "CONFIRMADO"
+            else:
+                resposta = "Compreendo. Agradecemos o contato e estamos à disposição para agendamentos futuros."
+                estado = "CONFIRMADO"
             
         elif estado == "TRIAGEM":
             sintoma = msg
@@ -150,39 +158,40 @@ def webhook():
             
             # Inteligência de Triagem
             msg_l = msg.lower()
-            especialidade = "Clínico Geral" # Triagem padrão de segurança
-            if any(k in msg_l for k in ["peito", "coração", "coracao", "infarto"]):
+            especialidade = "Clínico Geral" 
+            if any(k in msg_l for k in ["peito", "coração", "coracao", "infarto", "pressão"]):
                 especialidade = "Cardiologista"
-            elif any(k in msg_l for k in ["estômago", "estomago", "diges", "barriga"]):
+            elif any(k in msg_l for k in ["estômago", "estomago", "diges", "barriga", "refluxo"]):
                 especialidade = "Gastroenterologista"
-            elif any(k in msg_l for k in ["muscul", "osso", "costa", "dor", "joelho"]):
+            elif any(k in msg_l for k in ["muscul", "osso", "costa", "dor", "joelho", "coluna"]):
                 especialidade = "Ortopedista"
                 
-            resposta = f"Compreendo. Para esse quadro, o ideal é passarmos com o {especialidade}. Nossos horários livres para esse atendimento são: {vagas_txt}. Qual é o melhor horário para o paciente?"
+            resposta = f"Entendido. Para esse caso, o especialista mais indicado é o {especialidade}. Nossos horários disponíveis são: {vagas_txt}. Qual desses horários fica melhor para o paciente?"
             
         elif estado == "AGENDAMENTO":
             match = re.search(r'(\d{1,2})', msg)
             if not match:
-                # Anti-loop (se o cliente mudar de ideia ou não informar número)
+                # Mudança de intenção ou sintoma
                 estado = "TRIAGEM"
                 sintoma = None
-                resposta = "Certo, vamos reajustar. Qual é a especialidade exata ou o sintoma que o paciente está apresentando agora?"
+                resposta = "Entendi, vamos ajustar. Por favor, me confirme qual é a especialidade ou o motivo exato da consulta que você busca agora."
             else:
                 h = match.group(1).zfill(2)
+                # Interpretação parcial (ex: "16" mapeia para "16:00" ou "16:30")
                 horario = next((v for v in vagas if v.startswith(h)), None)
                 if not horario:
-                    resposta = f"Esse horário não está disponível na grade. Para garantirmos a vaga com rapidez, me confirme um destes: {vagas_txt}."
+                    resposta = f"Este horário não consta na nossa disponibilidade atual. Por favor, escolha uma destas opções para garantirmos a vaga: {vagas_txt}."
                 else:
                     estado = "NOME"
-                    resposta = f"Excelente. O horário das {horario} está pré-reservado. Para abrirmos a ficha, qual é o nome completo do paciente?"
+                    resposta = f"Ótimo. O horário das {horario} está reservado. Para iniciarmos o prontuário, qual é o nome completo do paciente que será atendido?"
                     
         elif estado == "NOME":
             nome = msg
             estado = "CPF"
-            resposta = f"Muito prazer, {nome.split()[0]}. Para a segurança dos dados e emissão do prontuário, digite apenas os 11 números do CPF do paciente."
+            primeiro_nome = nome.split()[0]
+            resposta = f"Muito prazer, {primeiro_nome}. Para finalizar o cadastro e validar a consulta, por favor, me informe o CPF do paciente (apenas os 11 números)."
             
         elif estado == "CPF":
-            # REGRA CRÍTICA 3: LEIS E SEGURANÇA (LGPD / RECUSA CPF)
             cpf_limpo = re.sub(r'\D', '', msg)
             msg_l = msg.lower()
             recusa_lgpd = ["não", "nao", "não quero", "precisa", "obrigatório", "lgpd", "motivo", "por que"]
@@ -191,26 +200,31 @@ def webhook():
                 cpf = cpf_limpo
                 estado = "CONFIRMADO"
                 cur.execute("UPDATE agenda SET disponivel=FALSE WHERE id IN (SELECT id FROM agenda WHERE CAST(hora AS TEXT) LIKE %s AND disponivel=TRUE LIMIT 1)", (f"{horario}%",))
-                resposta = f"Tudo certo! Agendamento para {horario} 100% confirmado. Nossa equipe de especialistas aguarda o paciente. Até logo!"
+                resposta = f"Perfeito! Agendamento para as {horario} confirmado com sucesso. Nossa equipe aguarda o paciente. Até breve!"
             elif any(r in msg_l for r in recusa_lgpd) and len(msg.split()) < 15:
                 cpf = "RECUSADO_LGPD"
                 estado = "CONFIRMADO"
                 cur.execute("UPDATE agenda SET disponivel=FALSE WHERE id IN (SELECT id FROM agenda WHERE CAST(hora AS TEXT) LIKE %s AND disponivel=TRUE LIMIT 1)", (f"{horario}%",))
-                resposta = f"Sem problemas, podemos deixar o pré-agendamento feito para {horario} e finalizar seus dados no atendimento presencial. Nossa equipe aguarda você!"
+                resposta = f"Sem problemas. O pré-agendamento para as {horario} está garantido. Coletaremos os dados restantes presencialmente na recepção. Até logo!"
             else:
-                resposta = "O CPF deve conter exatamente 11 números. (Ou, se preferir não informar agora, basta me avisar)."
+                resposta = "O CPF informado não parece válido. Digite exatamente os 11 números (ou, se preferir informar apenas presencialmente, me avise)."
                 
         elif estado == "CONFIRMADO":
-            palavras_encerramento = ["obrigad", "ok", "valeu", "tchau", "certo", "beleza", "show", "agradeço"]
-            if any(p in msg.lower() for p in palavras_encerramento) and len(msg.split()) <= 4:
-                resposta = "Foi um prazer atender você. Nossa clínica está sempre à disposição. Um excelente dia!"
-            else:
+            msg_l = msg.lower()
+            # Tratamento de Múltiplos Agendamentos
+            if any(palavra in msg_l for palavra in ["outra pessoa", "mais um", "meu irmão", "minha", "meu", "marcar outro", "novo", "esposa", "marido"]):
                 nome = None
                 cpf = None
                 horario = None
                 sintoma = None
                 estado = "TRIAGEM"
-                resposta = "Com certeza, posso iniciar um novo agendamento. Qual é a especialidade médica ou sintoma do novo paciente?"
+                resposta = "Claro, será um prazer ajudar com mais um agendamento. Por favor, me informe o motivo da consulta ou especialidade para este novo paciente."
+            else:
+                palavras_encerramento = ["obrigad", "ok", "valeu", "tchau", "certo", "beleza", "show", "agradeço"]
+                if any(p in msg_l for p in palavras_encerramento) and len(msg.split()) <= 4:
+                    resposta = "Eu que agradeço. A clínica está à sua disposição. Tenha um excelente dia!"
+                else:
+                    resposta = "Seu agendamento já está confirmado. Se precisar marcar para outra pessoa, é só me informar."
 
         cur.execute("""
             UPDATE sessoes 
@@ -251,7 +265,7 @@ def reset():
 
 @app.route('/')
 def home():
-    return "🚀 AGENTE V8 ONLINE - IMPÉRIO DE SILÍCIO", 200
+    return "🚀 AGENTE V9 ONLINE - IMPÉRIO DE SILÍCIO", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
