@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 AGENTE ELITE V7 - OPERAÇÃO MULTI-AGENDAMENTO ONLINE")
+print("🚀 AGENTE ELITE V7 - COORDENADOR DE ELITE ONLINE")
 
 app = Flask(__name__)
 
@@ -119,6 +119,7 @@ def webhook():
             print("⚠️ MSG DUPLICADA IGNORADA")
             return "OK", 200
 
+        # CONVERSÃO ABSOLUTA DE DADOS
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE AND hora IS NOT NULL ORDER BY hora LIMIT 4")
         raw_vagas = cur.fetchall()
         
@@ -134,33 +135,38 @@ def webhook():
 
         resposta = ""
 
+        # LÓGICA DE COORDENADOR DE ELITE + MULTI-AGENDAMENTO
         if not vagas and estado not in ["CONFIRMADO", "CPF"]:
-            resposta = "Nossa agenda lotou no momento. Deseja entrar na lista de espera?"
+            resposta = "No momento, nossos especialistas estão com a agenda lotada para hoje. Como a sua saúde é prioridade, gostaria que eu te incluísse na nossa lista de espera VIP para o primeiro encaixe?"
             estado = "TRIAGEM"
+            
         elif estado == "TRIAGEM":
             sintoma = msg
             estado = "AGENDAMENTO"
-            resposta = f"Entendi a sua necessidade. Para isso, o ideal é o Clínico. Horários disponíveis: {vagas_txt}. Qual você prefere?"
+            resposta = f"Compreendo perfeitamente o que está sentindo. O profissional mais indicado para te avaliar com excelência é o nosso Clínico. Separei estes horários exclusivos para você: {vagas_txt}. Qual fica melhor na sua rotina?"
+            
         elif estado == "AGENDAMENTO":
             match = re.search(r'(\d{1,2})', msg)
             if not match:
-                resposta = f"Por favor, escolha um horário válido: {vagas_txt}"
+                resposta = f"Para garantirmos a sua vaga com rapidez, por favor, me confirme um destes horários disponíveis: {vagas_txt}."
             else:
                 h = match.group(1).zfill(2)
                 horario = next((v for v in vagas if v.startswith(h)), None)
                 if not horario:
-                    resposta = f"Por favor, escolha um horário válido: {vagas_txt}"
+                    resposta = f"Este horário acabou de ser preenchido. Ainda temos estas opções para te atender: {vagas_txt}. Qual prefere?"
                 else:
                     estado = "NOME"
-                    resposta = f"Perfeito, horário de {horario} pré-reservado. Qual o nome completo do paciente?"
+                    resposta = f"Excelente escolha. Seu horário das {horario} está pré-reservado. Para abrirmos a sua ficha de atendimento, qual é o nome completo do paciente?"
+                    
         elif estado == "NOME":
             nome = msg
             estado = "CPF"
-            resposta = f"Obrigado, {nome.split()[0]}. Para finalizar a ficha, digite o CPF (apenas os 11 números)."
+            resposta = f"Muito prazer, {nome.split()[0]}. Para a segurança dos seus dados e emissão do prontuário, digite apenas os 11 números do seu CPF, por favor."
+            
         elif estado == "CPF":
             cpf_limpo = re.sub(r'\D', '', msg)
             if len(cpf_limpo) != 11:
-                resposta = "CPF inválido. Digite os 11 números corretamente."
+                resposta = "Identifiquei que faltam alguns números. Por favor, digite os 11 dígitos do CPF para concluirmos."
             else:
                 cpf = cpf_limpo
                 estado = "CONFIRMADO"
@@ -169,14 +175,14 @@ def webhook():
                     SET disponivel=FALSE 
                     WHERE id IN (SELECT id FROM agenda WHERE CAST(hora AS TEXT) LIKE %s AND disponivel=TRUE LIMIT 1)
                 """, (f"{horario}%",))
-                resposta = f"Agendamento confirmado para {horario}. Nossa equipe aguarda você."
+                resposta = f"Tudo certo! Seu agendamento para {horario} está 100% confirmado. Nossa equipe de especialistas está pronta para te receber e garantir a melhor experiência possível. Até logo!"
+                
         elif estado == "CONFIRMADO":
-            # FILTRO DE REENTRADA MULTI-AGENDAMENTO
             if any(palavra in msg.lower() for palavra in ["obrigad", "ok", "valeu", "tchau", "certo", "beleza", "show", "agradeço"]):
-                resposta = "Nós que agradecemos! Se precisar agendar para mais alguém, é só me avisar."
+                resposta = "Foi um prazer atender você. Nossa clínica está sempre à disposição. Um excelente dia!"
             else:
                 if not vagas:
-                    resposta = "Identifiquei que você deseja marcar para outra pessoa, mas nossa agenda acabou de lotar. Deseja entrar na lista de espera?"
+                    resposta = "Notei que você deseja realizar mais um agendamento, mas nossas vagas acabaram de encerrar. Deseja entrar na lista de espera para o próximo horário disponível?"
                     estado = "TRIAGEM"
                 else:
                     nome = None
@@ -184,7 +190,7 @@ def webhook():
                     horario = None
                     sintoma = msg
                     estado = "AGENDAMENTO"
-                    resposta = f"Com certeza, vamos agendar para outra pessoa! Horários ainda disponíveis: {vagas_txt}. Qual você prefere?"
+                    resposta = f"Com certeza, será um prazer cuidar de mais alguém da sua família. Os horários que ainda temos disponíveis são: {vagas_txt}. Qual você escolhe?"
 
         cur.execute("""
             UPDATE sessoes 
@@ -225,7 +231,7 @@ def reset():
 
 @app.route('/')
 def home():
-    return "🚀 AGENTE V7 ONLINE - IMPÉRIO DE SILÍCIO", 200
+    return "🚀 AGENTE V7 ONLINE - COORDENADOR DE ELITE", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
