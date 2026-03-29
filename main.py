@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 AGENTE ELITE V7 - CONTROLE TOTAL ONLINE")
+print("🚀 AGENTE ELITE V7 - OPERAÇÃO BLINDADA ONLINE")
 
 app = Flask(__name__)
 
@@ -119,9 +119,19 @@ def webhook():
             print("⚠️ MSG DUPLICADA IGNORADA")
             return "OK", 200
 
-        # CORREÇÃO APLICADA AQUI: Conversão absoluta para String (str) e formatação HH:MM
+        # CONVERSÃO ABSOLUTA DE DADOS (Correção do erro datetime.time)
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE AND hora IS NOT NULL ORDER BY hora LIMIT 4")
-        vagas = [str(v[0])[:5] for v in cur.fetchall() if v[0] is not None]
+        raw_vagas = cur.fetchall()
+        
+        vagas = []
+        for v in raw_vagas:
+            if v[0] is not None:
+                # Se o banco retornar objeto de tempo, converte para HH:MM. Se for texto, pega os 5 primeiros caracteres.
+                if hasattr(v[0], 'strftime'):
+                    vagas.append(v[0].strftime('%H:%M'))
+                else:
+                    vagas.append(str(v[0])[:5])
+
         vagas_txt = ", ".join(vagas) if vagas else "Agenda lotada"
 
         resposta = ""
@@ -156,11 +166,12 @@ def webhook():
             else:
                 cpf = cpf_limpo
                 estado = "CONFIRMADO"
+                # Usa string formatada para garantir compatibilidade com o banco
                 cur.execute("""
                     UPDATE agenda 
                     SET disponivel=FALSE 
-                    WHERE id IN (SELECT id FROM agenda WHERE hora=%s AND disponivel=TRUE LIMIT 1)
-                """, (horario,))
+                    WHERE id IN (SELECT id FROM agenda WHERE CAST(hora AS TEXT) LIKE %s AND disponivel=TRUE LIMIT 1)
+                """, (f"{horario}%",))
                 resposta = f"Agendamento confirmado para {horario}. Nossa equipe aguarda você."
         else:
             resposta = "Seu agendamento já está confirmado no sistema."
