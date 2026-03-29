@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 AGENTE V7.2 - ANTI-LOOP E CONTEXTO DINÂMICO ATIVO")
+print("🚀 AGENTE V7.3 - FUNIL DINÂMICO E MULTI-AGENDAMENTO ATIVO")
 
 app = Flask(__name__)
 
@@ -130,28 +130,29 @@ def webhook():
         resposta = ""
 
         if not vagas and estado not in ["CONFIRMADO", "CPF", "NOME"]:
-            resposta = "Nossa agenda de hoje acabou de lotar. Deseja que eu adicione o seu nome na lista de espera prioritária?"
+            resposta = "Nossa agenda de hoje acabou de lotar. Deseja que eu adicione o paciente na lista de espera prioritária?"
             estado = "TRIAGEM"
             
         elif estado == "TRIAGEM":
             sintoma = msg
             estado = "AGENDAMENTO"
-            resposta = f"Perfeito, podemos ajudar com isso. Nossos horários livres para esse atendimento são: {vagas_txt}. Qual é o melhor horário para o paciente?"
+            resposta = f"Perfeito, podemos ajudar com isso. Os horários livres com o especialista adequado são: {vagas_txt}. Qual é o melhor horário para o atendimento?"
             
         elif estado == "AGENDAMENTO":
             match = re.search(r'(\d{1,2})', msg)
             if not match:
-                # VÁLVULA DE ESCAPE: Se o cliente não digitar um número, o bot adapta e recua.
+                # QUEBRA DE LOOP: Cliente digitou texto sem número. Retorna para TRIAGEM.
                 estado = "TRIAGEM"
-                resposta = "Notei que você deseja fazer um ajuste ou mudar a especialidade. Sem problemas. Qual tipo de médico ou procedimento exato você procura agora?"
+                sintoma = None
+                resposta = "Entendi, vamos reajustar. Qual é a especialidade exata ou o sintoma que o paciente está apresentando agora?"
             else:
                 h = match.group(1).zfill(2)
                 horario = next((v for v in vagas if v.startswith(h)), None)
                 if not horario:
-                    resposta = f"Esse horário não está disponível. Para garantirmos a vaga com rapidez, me confirme um destes: {vagas_txt}."
+                    resposta = f"Esse horário não está disponível na grade. Para garantirmos a vaga com rapidez, me confirme um destes: {vagas_txt}."
                 else:
                     estado = "NOME"
-                    resposta = f"Excelente escolha. O horário das {horario} está pré-reservado. Para abrirmos a ficha, qual é o nome completo do paciente?"
+                    resposta = f"Excelente. O horário das {horario} está pré-reservado. Para abrirmos a ficha, qual é o nome completo do paciente?"
                     
         elif estado == "NOME":
             nome = msg
@@ -161,7 +162,7 @@ def webhook():
         elif estado == "CPF":
             cpf_limpo = re.sub(r'\D', '', msg)
             if len(cpf_limpo) != 11:
-                resposta = "O CPF deve conter exatamente 11 números. Por favor, tente novamente."
+                resposta = "O CPF deve conter exatamente 11 números. Por favor, digite novamente."
             else:
                 cpf = cpf_limpo
                 estado = "CONFIRMADO"
@@ -174,19 +175,16 @@ def webhook():
                 
         elif estado == "CONFIRMADO":
             palavras_encerramento = ["obrigad", "ok", "valeu", "tchau", "certo", "beleza", "show", "agradeço"]
-            if any(p in msg.lower() for p in palavras_encerramento) and len(msg.split()) <= 3:
+            if any(p in msg.lower() for p in palavras_encerramento) and len(msg.split()) <= 4:
                 resposta = "Foi um prazer atender você. Nossa clínica está sempre à disposição. Um excelente dia!"
             else:
-                if not vagas:
-                    resposta = "Identifiquei que você deseja agendar para outra pessoa, mas nossa agenda acabou de lotar. Deseja entrar na lista de espera?"
-                    estado = "TRIAGEM"
-                else:
-                    nome = None
-                    cpf = None
-                    horario = None
-                    sintoma = msg
-                    estado = "AGENDAMENTO"
-                    resposta = f"Com certeza, será um prazer cuidar de mais alguém da sua família. Os horários que ainda temos disponíveis são: {vagas_txt}. Qual você escolhe?"
+                # MULTI-AGENDAMENTO: Limpa a ficha e reinicia o funil corretamente na TRIAGEM
+                nome = None
+                cpf = None
+                horario = None
+                sintoma = None
+                estado = "TRIAGEM"
+                resposta = "Com certeza, posso iniciar um novo agendamento. Para qual especialidade médica ou sintoma você busca atendimento agora?"
 
         cur.execute("""
             UPDATE sessoes 
@@ -227,7 +225,7 @@ def reset():
 
 @app.route('/')
 def home():
-    return "🚀 AGENTE V7.2 ONLINE - IMPÉRIO DE SILÍCIO", 200
+    return "🚀 AGENTE V7.3 ONLINE - IMPÉRIO DE SILÍCIO", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
