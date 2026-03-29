@@ -1,210 +1,193 @@
-import os
+Import os
 import requests
 import psycopg2
-import re
 from flask import Flask, request
-
-print("🚀 AGENTE ELITE V7 - CONTROLE TOTAL ONLINE")
 
 app = Flask(__name__)
 
-# =========================
-# CONFIGURAÇÕES
-# =========================
+# ENV
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE_ID", "").strip()
 ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "").strip()
 ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "").strip()
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
 # =========================
 # BANCO DE DADOS
 # =========================
-def conectar():
-    return psycopg2.connect(DATABASE_URL, sslmode='require', connect_timeout=10)
+def conectar_banco():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
 
-def init_db():
-    conn = None
+def inicializar_banco():
     try:
-        conn = conectar()
+        conn = conectar_banco()
         cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS sessoes (
-                telefone TEXT PRIMARY KEY, 
-                estado TEXT, 
-                nome TEXT, 
-                cpf TEXT, 
-                sintoma TEXT, 
-                horario TEXT, 
-                ultima_msg TEXT
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS historico_atendimento (
+                id SERIAL PRIMARY KEY,
+                telefone VARCHAR(50),
+                perfil VARCHAR(20),
+                mensagem TEXT,
+                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS agenda (
-                id SERIAL PRIMARY KEY, 
-                hora TEXT, 
-                disponivel BOOLEAN DEFAULT TRUE
-            )
-        """)
+        ''')
         conn.commit()
-        print("✅ BANCO OK")
+        cur.close()
+        conn.close()
+        print("✅ Banco pronto")
     except Exception as e:
-        print(f"❌ ERRO BANCO: {e}")
-    finally:
-        if conn:
-            conn.close()
+        print(f"Erro banco: {e}")
 
-init_db()
+inicializar_banco()
 
 # =========================
-# WHATSAPP
+# PROMPT ELITE FINAL
 # =========================
-def enviar_whatsapp(telefone, mensagem):
-    try:
-        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
-        headers = {"Client-Token": ZAPI_CLIENT_TOKEN}
-        payload = {"phone": telefone, "message": mensagem}
-        res = requests.post(url, headers=headers, json=payload, timeout=10)
-        print(f"📤 ENVIO WHATS: {res.status_code}")
-    except Exception as e:
-        print(f"❌ ERRO ENVIO: {e}")
+def gerar_prompt():
+    return """
+Você é um Especialista em Conversão e Agendamento de uma Clínica Premium.
+
+MISSÃO:
+Levar o cliente até o AGENDAMENTO.
+
+REGRAS:
+- Nunca peça desculpas
+- Nunca reinicie conversa
+- Nunca diga "como posso ajudar" após início
+- Máximo 2 frases
+- Sempre conduzir
+
+COMPORTAMENTO:
+- Cliente perdido → faça perguntas diretas
+- Emoção → leve para avaliação médica
+- Sem dinheiro → ofereça parcelamento
+- Brincadeira → ignore e volte ao foco
+
+FLUXO:
+1. Sintoma
+2. Especialidade
+3. Horário
+4. Fechamento
+
+EXEMPLOS:
+
+Cliente: "não sei"
+Resposta: "Vamos resolver isso agora. O que você está sentindo?"
+
+Cliente: "estou mal emocionalmente"
+Resposta: "Isso precisa de avaliação profissional. Vamos agendar hoje. Prefere manhã ou tarde?"
+
+Cliente: "sem dinheiro"
+Resposta: "Temos parcelamento. Vamos garantir seu atendimento. Qual horário prefere?"
+"""
 
 # =========================
-# WEBHOOK PRINCIPAL
+# ROTA PRINCIPAL
 # =========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    print("\n📩 NOVA REQUISIÇÃO RECEBIDA DA Z-API!")
-    conn = None
     try:
-        data = request.get_json(force=True)
-        if not data or data.get("fromMe"): 
-            return "OK", 200
+        dados = request.get_json(force=True)
+    except:
+        return "OK", 200
 
-        telefone = data.get("phone", "")
-        if "@" in telefone:
-            telefone = telefone.split("@")[0]
+    if not dados or dados.get("fromMe"):
+        return "OK", 200
 
-        # Extração blindada da mensagem
-        msg = ""
-        if "text" in data:
-            if isinstance(data["text"], dict):
-                msg = data["text"].get("message", "")
-            else:
-                msg = str(data["text"])
-        elif "message" in data:
-            msg = str(data["message"])
-        
-        if not telefone or not msg: 
-            return "OK", 200
+    telefone = dados.get("phone", "").split("@")[0]
+    mensagem = ""
 
-        print(f"📞 TEL: {telefone} | 💬 MSG: {msg}")
+    if isinstance(dados.get("text"), dict):
+        mensagem = dados["text"].get("message", "")
+    elif isinstance(dados.get("text"), str):
+        mensagem = dados["text"]
+    elif "message" in dados:
+        mensagem = dados["message"]
 
-        conn = conectar()
+    if not telefone or not mensagem:
+        return "OK", 200
+
+    print(f"[{telefone}] Cliente: {mensagem}")
+
+    try:
+        conn = conectar_banco()
         cur = conn.cursor()
 
-        cur.execute("SELECT estado, nome, cpf, sintoma, horario, ultima_msg FROM sessoes WHERE telefone=%s", (telefone,))
-        row = cur.fetchone()
+        # salva cliente
+        cur.execute(
+            "INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)",
+            (telefone, "user", mensagem)
+        )
+        conn.commit()
 
-        if not row:
-            estado, nome, cpf, sintoma, horario, ultima_msg = "TRIAGEM", None, None, None, None, None
-            cur.execute("INSERT INTO sessoes (telefone, estado) VALUES (%s, %s)", (telefone, estado))
-            conn.commit()
-        else:
-            estado, nome, cpf, sintoma, horario, ultima_msg = row
+        # busca histórico
+        cur.execute("""
+            SELECT perfil, mensagem FROM (
+                SELECT perfil, mensagem, data_hora
+                FROM historico_atendimento
+                WHERE telefone = %s
+                ORDER BY data_hora DESC LIMIT 10
+            ) sub ORDER BY data_hora ASC
+        """, (telefone,))
 
-        if msg == ultima_msg:
-            print("⚠️ MSG DUPLICADA IGNORADA")
+        historico = [{"role": "system", "content": gerar_prompt()}]
+
+        for perfil, msg in cur.fetchall():
+            role = "assistant" if perfil == "assistant" else "user"
+            historico.append({"role": role, "content": msg})
+
+        # OpenAI
+        resposta = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_KEY}"},
+            json={
+                "model": "gpt-3.5-turbo",
+                "messages": historico,
+                "temperature": 0.7
+            }
+        )
+
+        if resposta.status_code != 200:
+            print(resposta.text)
             return "OK", 200
 
-        cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE AND hora IS NOT NULL ORDER BY hora LIMIT 4")
-        vagas = [v[0] for v in cur.fetchall() if v[0] is not None]
-        vagas_txt = ", ".join(vagas) if vagas else "Agenda lotada"
+        resposta_texto = resposta.json()['choices'][0]['message']['content']
 
-        resposta = ""
-
-        if not vagas and estado != "CONFIRMADO":
-            resposta = "Nossa agenda lotou no momento. Deseja entrar na lista de espera?"
-            estado = "TRIAGEM"
-        elif estado == "TRIAGEM":
-            sintoma = msg
-            estado = "AGENDAMENTO"
-            resposta = f"Entendi a sua necessidade. Para isso, o ideal é o Clínico. Horários disponíveis: {vagas_txt}. Qual você prefere?"
-        elif estado == "AGENDAMENTO":
-            match = re.search(r'(\d{1,2})', msg)
-            if not match:
-                resposta = f"Por favor, escolha um horário válido: {vagas_txt}"
-            else:
-                h = match.group(1).zfill(2)
-                horario = next((v for v in vagas if v.startswith(h)), None)
-                if not horario:
-                    resposta = f"Por favor, escolha um horário válido: {vagas_txt}"
-                else:
-                    estado = "NOME"
-                    resposta = f"Perfeito, horário de {horario} pré-reservado. Qual o seu nome completo?"
-        elif estado == "NOME":
-            nome = msg
-            estado = "CPF"
-            resposta = f"Obrigado, {nome.split()[0]}. Para finalizar a ficha, digite seu CPF (apenas os 11 números)."
-        elif estado == "CPF":
-            cpf_limpo = re.sub(r'\D', '', msg)
-            if len(cpf_limpo) != 11:
-                resposta = "CPF inválido. Digite os 11 números corretamente."
-            else:
-                cpf = cpf_limpo
-                estado = "CONFIRMADO"
-                cur.execute("""
-                    UPDATE agenda 
-                    SET disponivel=FALSE 
-                    WHERE id IN (SELECT id FROM agenda WHERE hora=%s AND disponivel=TRUE LIMIT 1)
-                """, (horario,))
-                resposta = f"Agendamento confirmado para {horario}. Nossa equipe aguarda você."
-        else:
-            resposta = "Seu agendamento já está confirmado no sistema."
-
-        cur.execute("""
-            UPDATE sessoes 
-            SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s 
-            WHERE telefone=%s
-        """, (estado, nome, cpf, sintoma, horario, msg, telefone))
-        
+        # salva resposta
+        cur.execute(
+            "INSERT INTO historico_atendimento (telefone, perfil, mensagem) VALUES (%s, %s, %s)",
+            (telefone, "assistant", resposta_texto)
+        )
         conn.commit()
-        enviar_whatsapp(telefone, resposta)
+
+        cur.close()
+        conn.close()
+
+        print(f"Robô: {resposta_texto}")
+
+        # envia WhatsApp
+        requests.post(
+            f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text",
+            headers={
+                "Content-Type": "application/json",
+                "Client-Token": ZAPI_CLIENT_TOKEN
+            },
+            json={
+                "phone": telefone,
+                "message": resposta_texto
+            }
+        )
 
     except Exception as e:
-        print(f"❌ ERRO GERAL NO WEBHOOK: {e}")
-    finally:
-        if conn:
-            conn.close()
+        print(f"Erro geral: {e}")
 
     return "OK", 200
 
-# =========================
-# ROTAS DE SUPORTE
-# =========================
-@app.route('/reset', methods=['GET'])
-def reset():
-    conn = None
-    try:
-        conn = conectar()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
-        for h in ["09:00", "11:00", "14:30", "16:00"]:
-            cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
-        conn.commit()
-        return "✅ RESET OK", 200
-    except Exception as e:
-        return f"❌ ERRO NO RESET: {e}", 500
-    finally:
-        if conn:
-            conn.close()
 
-@app.route('/')
+@app.route('/', methods=['GET'])
 def home():
-    return "🚀 AGENTE V7 ONLINE - IMPÉRIO DE SILÍCIO", 200
+    return "Império de Silício rodando 🚀", 200
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
