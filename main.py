@@ -4,7 +4,7 @@ import psycopg2
 import re
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO - CONTROLE TOTAL ATIVO")
+print("🚀 IMPÉRIO DE SILÍCIO V10 - OVERRIDE GLOBAL E ANTI-LOOP ATIVO")
 
 app = Flask(__name__)
 
@@ -85,7 +85,6 @@ def webhook():
         if "@" in telefone:
             telefone = telefone.split("@")[0]
             
-        # Extração segura da mensagem
         msg = ""
         if "text" in data:
             if isinstance(data["text"], dict):
@@ -101,9 +100,6 @@ def webhook():
         msg = msg.strip()
         msg_lower = msg.lower()
 
-        # =========================
-        # BLOQUEIO DE REPETIÇÃO & RECUPERAÇÃO DE ESTADO
-        # =========================
         conn = conectar()
         cur = conn.cursor()
 
@@ -121,17 +117,37 @@ def webhook():
             return "OK", 200
 
         # =========================
-        # PAUSA HUMANA
+        # 1. PAUSA HUMANA
         # =========================
         palavras_pausa = ["espera", "aguarda", "um momento", "já volto", "ja volto", "calma", "pera"]
         if any(p in msg_lower for p in palavras_pausa):
             cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg, telefone))
             conn.commit()
-            enviar_whatsapp(telefone, "Perfeito, fico no aguardo. Me avise quando puder.")
+            enviar_whatsapp(telefone, "Perfeito, fico no aguardo. Me avise quando puder continuarmos.")
             return "OK", 200
 
         # =========================
-        # BUSCA AGENDA (Com conversão segura de hora)
+        # 2. OVERRIDE GLOBAL (QUEBRA DE PADRÃO E RESTART)
+        # =========================
+        palavras_reinicio = ["início", "inicio", "recomeçar", "voltar", "outra consulta", "nova consulta", "marcar outra", "marcar consulta", "mais uma", "novo agendamento", "outra marcação"]
+        if any(p in msg_lower for p in palavras_reinicio) and estado != "TRIAGEM":
+            estado = "TRIAGEM"
+            nome = None
+            cpf = None
+            horario = None
+            sintoma = None
+            
+            cur.execute("""
+            UPDATE sessoes SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s
+            WHERE telefone=%s
+            """, (estado, nome, cpf, sintoma, horario, msg, telefone))
+            conn.commit()
+            
+            enviar_whatsapp(telefone, "Compreendido. Vamos iniciar um novo agendamento. Para qual especialidade médica ou sintoma você busca atendimento agora?")
+            return "OK", 200
+
+        # =========================
+        # BUSCA AGENDA
         # =========================
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
         raw_vagas = cur.fetchall()
@@ -145,14 +161,13 @@ def webhook():
                     vagas_lista.append(str(v[0])[:5])
 
         vagas_txt = ", ".join(vagas_lista) if vagas_lista else ""
-
         resposta = ""
 
         # =========================
         # FLUXO CONTROLADO
         # =========================
 
-        if not vagas_lista and estado not in ["LISTA_ESPERA_CONFIRMACAO", "LISTA_ESPERA_DADOS", "CONFIRMADO"]:
+        if not vagas_lista and estado not in ["LISTA_ESPERA_CONFIRMACAO", "LISTA_ESPERA_DADOS", "CONFIRMADO", "FINALIZADO"]:
             estado = "LISTA_ESPERA_CONFIRMACAO"
             resposta = "Nossa agenda de hoje acabou de lotar. Deseja entrar na nossa lista de espera prioritária?"
             
@@ -160,13 +175,16 @@ def webhook():
         elif estado == "TRIAGEM":
             sintoma = msg
             estado = "AGENDAMENTO"
-            resposta = f"Entendi sua necessidade. Para isso o ideal é agendarmos. Tenho os seguintes horários livres: {vagas_txt}. Qual horário você prefere?"
+            resposta = f"Entendido. Para esse caso o ideal é passarmos por avaliação. Tenho os seguintes horários livres: {vagas_txt}. Qual horário você prefere?"
 
         # AGENDAMENTO
         elif estado == "AGENDAMENTO":
             match = re.search(r'(\d{1,2})', msg)
             if not match:
-                 resposta = f"Por favor, me informe qual destes horários fica melhor para você: {vagas_txt}"
+                # Anti-loop dinâmico: Se o cliente responder com texto, o bot adapta e recua.
+                estado = "TRIAGEM"
+                sintoma = None
+                resposta = "Entendi, vamos reajustar. Por favor, me confirme a especialidade ou o sintoma para eu buscar a melhor opção de horário."
             else:
                 h_dig = match.group(1).zfill(2)
                 h_final = next((v for v in vagas_lista if v.startswith(h_dig)), None)
@@ -176,14 +194,14 @@ def webhook():
                 else:
                     horario = h_final
                     estado = "DADOS_NOME"
-                    resposta = f"Perfeito, o horário das {horario} está pré-reservado. Qual é o nome completo do paciente?"
+                    resposta = f"Excelente. O horário das {horario} está pré-reservado. Qual é o nome completo do paciente?"
 
         # NOME
         elif estado == "DADOS_NOME":
             nome = msg
             estado = "DADOS_CPF"
             primeiro_nome = nome.split()[0]
-            resposta = f"Muito prazer, {primeiro_nome}. Para finalizar a ficha, digite o seu CPF (apenas os 11 números)."
+            resposta = f"Muito prazer, {primeiro_nome}. Para finalizar a ficha, digite o CPF do paciente (apenas os 11 números)."
 
         # CPF
         elif estado == "DADOS_CPF":
@@ -195,7 +213,6 @@ def webhook():
                 cpf = cpf_limpo
                 estado = "CONFIRMADO"
 
-                # Usa LIKE para garantir a compatibilidade do formato da hora
                 cur.execute("""
                 UPDATE agenda SET disponivel=FALSE
                 WHERE id IN (
@@ -211,19 +228,24 @@ def webhook():
                 estado = "LISTA_ESPERA_DADOS"
                 resposta = "Excelente. Por favor, me informe o nome completo do paciente para a lista de espera."
             else:
-                estado = "TRIAGEM" # Volta pro início se ele disser não
+                estado = "TRIAGEM"
                 resposta = "Compreendo. Agradecemos o contato e estamos à disposição para agendamentos futuros."
 
         # LISTA ESPERA DADOS
         elif estado == "LISTA_ESPERA_DADOS":
             nome = msg
-            estado = "CONFIRMADO"
+            estado = "FINALIZADO"
             primeiro_nome = nome.split()[0]
             resposta = f"Perfeito, {primeiro_nome}. Você foi incluído(a) na lista de espera. Avisaremos assim que surgir uma vaga."
 
         # FINAL
         else:
-            resposta = "Seu agendamento já está confirmado no sistema. Se precisar de outra marcação, me avise!"
+            palavras_encerramento = ["obrigad", "ok", "valeu", "tchau", "certo", "beleza", "show"]
+            if any(p in msg_lower for p in palavras_encerramento) and len(msg.split()) <= 4:
+                resposta = "Eu que agradeço! A clínica está à disposição. Tenha um excelente dia!"
+            else:
+                estado = "CONFIRMADO"
+                resposta = "Seu agendamento já está confirmado. Se precisar marcar uma nova consulta, é só me avisar!"
 
         # =========================
         # SALVAR ESTADO
@@ -235,7 +257,6 @@ def webhook():
 
         conn.commit()
 
-        # ENVIA MENSAGEM FINAL
         enviar_whatsapp(telefone, resposta)
 
     except Exception as e:
@@ -276,7 +297,7 @@ def reset():
 # =========================
 @app.route('/')
 def home():
-    return "🚀 IMPÉRIO DE SILÍCIO ONLINE", 200
+    return "🚀 IMPÉRIO DE SILÍCIO V10 ONLINE", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
