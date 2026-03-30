@@ -1,22 +1,23 @@
-
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V12 — AGENTE DE ELITE
-# OVERRIDE GLOBAL VERDADEIRO E MULTI-AGENDAMENTO INTELIGENTE
+# 🚀 IMPÉRIO DE SILÍCIO V13 — AGENTE DE ELITE COM IA
+# ARQUITETURA HÍBRIDA: CONTROLE POSTGRES + CÉREBRO OPENAI
 # ============================================
 
 import os
 import requests
 import psycopg2
 import re
+import json
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V12 - ATIVO")
+print("🚀 IMPÉRIO DE SILÍCIO V13 - CÉREBRO IA ATIVO")
 
 app = Flask(__name__)
 
 # =========================
 # CONFIG
 # =========================
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE_ID", "").strip()
 ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "").strip()
 ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "").strip()
@@ -28,9 +29,6 @@ if DATABASE_URL.startswith("postgres://"):
 def conectar():
     return psycopg2.connect(DATABASE_URL, sslmode='require', connect_timeout=10)
 
-# =========================
-# INIT DB
-# =========================
 def init_db():
     conn = None
     try:
@@ -38,20 +36,13 @@ def init_db():
         cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sessoes (
-                telefone TEXT PRIMARY KEY,
-                estado TEXT,
-                nome TEXT,
-                cpf TEXT,
-                sintoma TEXT,
-                horario TEXT,
-                ultima_msg TEXT
+                telefone TEXT PRIMARY KEY, estado TEXT, nome TEXT, 
+                cpf TEXT, sintoma TEXT, horario TEXT, ultima_msg TEXT
             )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS agenda (
-                id SERIAL PRIMARY KEY,
-                hora TEXT,
-                disponivel BOOLEAN DEFAULT TRUE
+                id SERIAL PRIMARY KEY, hora TEXT, disponivel BOOLEAN DEFAULT TRUE
             )
         """)
         conn.commit()
@@ -63,7 +54,7 @@ def init_db():
 init_db()
 
 # =========================
-# WHATSAPP
+# INTEGRAÇÕES (WHATSAPP E OPENAI)
 # =========================
 def enviar_whatsapp(telefone, mensagem):
     try:
@@ -72,16 +63,42 @@ def enviar_whatsapp(telefone, mensagem):
     except Exception as e:
         print("Erro WhatsApp:", e)
 
-# =========================
-# INTELIGÊNCIA DE TRIAGEM
-# =========================
-def detectar_especialidade(s):
-    s = s.lower()
-    if any(k in s for k in ["peito", "coração", "coracao", "pressão", "palpitação"]): return "Cardiologista"
-    if any(k in s for k in ["dente", "canal", "limpeza", "dentadura"]): return "Dentista"
-    if any(k in s for k in ["estômago", "estomago", "barriga", "refluxo", "azia"]): return "Gastroenterologista"
-    if any(k in s for k in ["osso", "dor", "joelho", "coluna", "costa"]): return "Ortopedista"
-    return "Clínico Geral"
+def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt):
+    """Cérebro da OpenAI para interpretar contexto e empatia"""
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
+    
+    prompt_sistema = f"""Você é o Recepcionista Sênior de uma clínica médica de altíssimo padrão. 
+Sua função é ser EXTREMAMENTE humano, empático e inteligente.
+O paciente está na etapa de fornecer: {estado_atual}.
+Horários disponíveis hoje: {vagas_txt}.
+
+Analise a mensagem do paciente: "{mensagem_paciente}".
+Ele respondeu o que foi pedido para a etapa atual ou fez uma pergunta/comentário avulso?
+
+Responda OBRIGATORIAMENTE em JSON válido com a seguinte estrutura:
+{{
+    "forneceu_dado_correto": true ou false,
+    "resposta_empatica": "Se ele NÃO forneceu o dado e fez uma pergunta (ex: 'posso tirar uma dúvida?', 'hemorroida dói'), responda com empatia, acolhimento, tire a dúvida e, na mesma mensagem, volte a pedir gentilmente a informação de {estado_atual}. Se ele respondeu corretamente, deixe vazio.",
+    "dado_extraido": "Se ele forneceu a informação, extraia-a de forma limpa. Senão, null."
+}}"""
+
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": [{"role": "system", "content": prompt_sistema}],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.3
+    }
+
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=12)
+        dados = res.json()
+        conteudo = dados['choices'][0]['message']['content']
+        return json.loads(conteudo)
+    except Exception as e:
+        print(f"Erro OpenAI: {e}")
+        # Fallback de segurança se a IA falhar
+        return {"forneceu_dado_correto": True, "resposta_empatica": "", "dado_extraido": mensagem_paciente}
 
 # =========================
 # WEBHOOK PRINCIPAL
@@ -104,7 +121,6 @@ def webhook():
 
         if not telefone or not msg: return "OK", 200
         msg_clean = msg.strip()
-        msg_lower = msg_clean.lower()
 
         conn = conectar()
         cur = conn.cursor()
@@ -121,100 +137,78 @@ def webhook():
 
         if msg_clean == ultima_msg: return "OK", 200
 
-        # BUSCA DE VAGAS
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
         raw_vagas = cur.fetchall()
-        vagas_lista = []
-        for v in raw_vagas:
-            if v[0]:
-                vagas_lista.append(v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5])
-
+        vagas_lista = [v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5] for v in raw_vagas if v[0]]
         vagas_txt = ", ".join(vagas_lista) if vagas_lista else ""
-        resposta = ""
-        
-        # ---------------------------------------------------------
-        # BLOCO 1: PAUSA HUMANA (Prioridade Máxima)
-        # ---------------------------------------------------------
-        if any(p in msg_lower for p in ["espera", "aguarda", "um momento", "vou ver", "ja volto"]):
-            cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg_clean, telefone))
+
+        # 1. OVERRIDE GLOBAL (Interrupções Críticas)
+        if any(p in msg_clean.lower() for p in ["início", "inicio", "recomeçar", "voltar", "cancelar"]) and estado != "TRIAGEM":
+            estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
+            resposta = "Compreendido. Cancelei a operação. Como posso te ajudar agora? Qual é a especialidade ou sintoma do paciente?"
+            cur.execute("UPDATE sessoes SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s WHERE telefone=%s", (estado, nome, cpf, sintoma, horario, msg_clean, telefone))
             conn.commit()
-            enviar_whatsapp(telefone, "Sem problemas, fico no aguardo. Me avise quando puder continuarmos.")
+            enviar_whatsapp(telefone, resposta)
             return "OK", 200
 
-        # ---------------------------------------------------------
-        # BLOCO 2: OVERRIDE GLOBAL (VERDADEIRO - Funciona em qualquer etapa)
-        # ---------------------------------------------------------
-        palavras_reinicio = ["início", "inicio", "recomeçar", "voltar", "marcar outra", "marcar consulta", "começar de novo", "cancelar"]
-        if any(p in msg_lower for p in palavras_reinicio) and estado != "TRIAGEM":
-            estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
-            resposta = "Compreendido. Cancelei a operação anterior. Vamos iniciar do zero. Para qual especialidade médica ou sintoma o paciente precisa de atendimento agora?"
+        # 2. ANÁLISE NEURAL (O Cérebro Híbrido atua aqui)
+        analise = analisar_com_ia(msg_clean, estado, vagas_txt)
+        
+        # Se a IA identificou que o paciente fez uma pergunta/desvio de assunto:
+        if not analise.get("forneceu_dado_correto"):
+            resposta = analise.get("resposta_empatica", "Desculpe, não entendi. Podemos voltar ao agendamento?")
+            cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg_clean, telefone))
+            conn.commit()
+            enviar_whatsapp(telefone, resposta)
+            return "OK", 200
+        
+        # Se a IA validou que o paciente respondeu corretamente, o dado segue para o Motor:
+        dado_limpo = analise.get("dado_extraido", msg_clean)
+        resposta = ""
 
-        # ---------------------------------------------------------
-        # BLOCO 3: MULTI-AGENDAMENTO (Quando já confirmou e quer mais)
-        # ---------------------------------------------------------
-        elif estado == "CONFIRMADO":
-            gatilhos_sim = ["sim", "ssim", "quero", "pessoas", "pessoa", "mais", "ok", "pode", "marcar"]
-            gatilhos_nao = ["não", "nao", "obrigado", "tchau", "nada", "valeu"]
-            
-            if any(p in msg_lower for p in gatilhos_sim):
-                estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
-                resposta = "Com certeza! Será um prazer ajudar com mais um agendamento. Qual é a especialidade médica ou o sintoma deste próximo paciente?"
-            elif any(p in msg_lower for p in gatilhos_nao):
-                resposta = "Perfeito. Nossa equipe agradece a preferência e deseja um excelente dia!"
-            else:
-                resposta = "Seu agendamento anterior já está confirmado. Gostaria de agendar para mais alguém agora? (Responda Sim ou Não)"
-
-        # ---------------------------------------------------------
-        # BLOCO 4: FLUXO DE FUNIL NORMAL
-        # ---------------------------------------------------------
-        elif estado == "TRIAGEM":
-            sintoma = msg_clean
-            esp = detectar_especialidade(sintoma)
+        # 3. FLUXO DE ESTADOS SEGUROS
+        if estado == "TRIAGEM":
+            sintoma = dado_limpo
             estado = "AGENDAMENTO"
             if not vagas_lista:
+                resposta = "Entendi o quadro. Infelizmente nossa agenda para hoje lotou. Deseja que eu adicione o paciente na lista de espera?"
                 estado = "LISTA_ESPERA"
-                resposta = f"Entendido. Para esse caso o ideal é o {esp}, mas nossa agenda está cheia hoje. Deseja entrar na lista de espera prioritária?"
             else:
-                resposta = f"Entendi perfeitamente. O especialista indicado é o {esp}. Nossos horários disponíveis são: {vagas_txt}. Qual desses horários fica melhor para você?"
+                resposta = f"Compreendo perfeitamente. Nossos horários livres hoje são: {vagas_txt}. Qual desses fica melhor para garantirmos o atendimento?"
 
         elif estado == "AGENDAMENTO":
-            match = re.search(r'(\d{1,2})', msg_clean)
-            
-            if not match:
-                if any(p in msg_lower for p in ["consegue", "pode", "outras", "pessoas", "tambem", "também", "ajudar"]):
-                    resposta = f"Com certeza! Consigo marcar para quantas pessoas você precisar. Mas para garantir que tudo fique correto no sistema, vamos finalizar este primeiro. Qual destes horários prefere: {vagas_txt}?"
-                else:
-                    resposta = f"Para garantirmos a sua vaga, por favor, me confirme apenas o número do horário desejado: {vagas_txt}"
-            else:
+            match = re.search(r'(\d{1,2})', str(dado_limpo))
+            if match:
                 h_dig = match.group(1).zfill(2)
                 h_final = next((v for v in vagas_lista if v.startswith(h_dig)), None)
-                if not h_final:
-                    resposta = f"Desculpe, esse horário não está disponível. Escolha uma dessas opções: {vagas_txt}"
-                else:
+                if h_final:
                     horario, estado = h_final, "DADOS_NOME"
-                    resposta = f"Excelente. O horário das {horario} está pré-reservado. Qual é o nome completo do paciente que será atendido?"
+                    resposta = f"Ótima escolha! O horário das {horario} está reservado para você. Agora, por favor, me diga o nome completo do paciente."
+                else:
+                    resposta = f"Esse horário não está na lista atual. Por favor, escolha entre: {vagas_txt}."
+            else:
+                resposta = f"Para garantirmos a sua vaga agora, por favor, me confirme apenas o número do horário desejado: {vagas_txt}"
 
         elif estado == "DADOS_NOME":
-            if len(msg_clean.split()) < 2:
-                resposta = "Para o prontuário, preciso do nome completo (nome e sobrenome). Como devo registrar?"
-            else:
-                nome, estado = msg_clean, "DADOS_CPF"
-                resposta = f"Muito prazer, {nome.split()[0]}. Para finalizar a ficha e validar a consulta, digite o CPF do paciente (apenas os 11 números)."
+            nome, estado = dado_limpo, "DADOS_CPF"
+            primeiro_nome = nome.split()[0] if nome else "Paciente"
+            resposta = f"Muito prazer, {primeiro_nome}. Para finalizar o seu prontuário com segurança, peço que digite apenas os 11 números do CPF do paciente."
 
         elif estado == "DADOS_CPF":
-            cpf_limpo = re.sub(r'\D', '', msg_clean)
+            cpf_limpo = re.sub(r'\D', '', str(dado_limpo))
             if len(cpf_limpo) != 11:
-                resposta = "O CPF informado está incompleto. Por favor, digite os 11 números corretamente para confirmarmos."
+                resposta = "O CPF informado parece estar incompleto. Poderia digitar os 11 números corretamente?"
             else:
                 cpf, estado = cpf_limpo, "CONFIRMADO"
                 cur.execute("UPDATE agenda SET disponivel=FALSE WHERE id IN (SELECT id FROM agenda WHERE CAST(hora AS TEXT) LIKE %s AND disponivel=TRUE LIMIT 1)", (f"{horario}%",))
-                resposta = f"Tudo pronto! Seu agendamento para as {horario} está 100% confirmado. Nossa equipe aguarda você. Gostaria de marcar para mais alguém agora?"
+                resposta = f"Tudo certo! Seu agendamento para as {horario} está 100% confirmado na clínica. Deseja marcar consulta para mais alguém da família?"
 
-        elif estado == "LISTA_ESPERA":
-            if any(p in msg_lower for p in ["sim", "quero", "pode", "ok"]):
-                estado, resposta = "CONFIRMADO", "Perfeito. Já te incluí na lista de espera prioritária. Entraremos em contato assim que surgir uma vaga!"
+        elif estado == "CONFIRMADO":
+            if any(p in str(dado_limpo).lower() for p in ["sim", "quero", "pessoas", "pessoa", "mais"]):
+                estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
+                resposta = "Será um prazer! Vamos iniciar o novo agendamento. Qual é a especialidade ou sintoma do próximo paciente?"
             else:
-                estado, resposta = "TRIAGEM", "Entendido. Caso mude de ideia ou precise de outra especialidade, estou à disposição."
+                resposta = "Perfeito. Nossa equipe agradece a preferência. Tenha um excelente dia!"
 
         # SALVAR ESTADO
         cur.execute("UPDATE sessoes SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s WHERE telefone=%s", (estado, nome, cpf, sintoma, horario, msg_clean, telefone))
@@ -238,13 +232,13 @@ def reset():
         cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
         for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
         conn.commit()
-        return "✅ RESET V12 OK", 200
+        return "✅ RESET V13 OK", 200
     except Exception as e: return str(e), 500
     finally:
         if conn: conn.close()
 
 @app.route('/')
-def home(): return "🚀 IMPÉRIO DE SILÍCIO V12 ATIVO", 200
+def home(): return "🚀 IMPÉRIO DE SILÍCIO V13 (CÉREBRO IA) ATIVO", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
