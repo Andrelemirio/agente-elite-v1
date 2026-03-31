@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V18 — AGENTE DE ELITE PREMIUM
-# MEGA MOTOR GPT-4o + ESCUDOS JURÍDICOS E FLUXO DINÂMICO
+# 🚀 IMPÉRIO DE SILÍCIO V19 — AGENTE DE ELITE PREMIUM
+# GPS DE OBJETIVOS + ESCUDOS JURÍDICOS + ANTI-CLICHÊ
 # ============================================
 
 import os
@@ -10,7 +10,7 @@ import re
 import json
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V18 - ELITE PREMIUM ATIVO")
+print("🚀 IMPÉRIO DE SILÍCIO V19 - ELITE PREMIUM ATIVO")
 
 app = Flask(__name__)
 
@@ -19,7 +19,7 @@ app = Flask(__name__)
 # =========================
 NOME_CLINICA = os.environ.get("NOME_CLINICA", "Império Saúde").strip()
 NOME_ATENDENTE = os.environ.get("NOME_ATENDENTE", "Ana").strip()
-TIPO_CLINICA = os.environ.get("TIPO_CLINICA", "AMBOS").strip().upper() # Pode ser: AMBOS, PARTICULAR, ou PLANO
+TIPO_CLINICA = os.environ.get("TIPO_CLINICA", "AMBOS").strip().upper() # AMBOS, PARTICULAR, ou PLANO
 
 # =========================
 # CONFIGURAÇÕES DE SISTEMA
@@ -68,32 +68,42 @@ def enviar_whatsapp(telefone, mensagem):
         print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO DE IA (MEGA MOTOR GPT-4o)
+# 🧠 CÉREBRO DE IA (MEGA MOTOR GPT-4o COM GPS)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, sintoma_atual, horario_atual):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
-    contexto = f"Sintoma/Especialidade: '{sintoma_atual}'. Horário: '{horario_atual}'." if sintoma_atual else "Ainda na triagem."
+    contexto = f"Sintoma/Especialidade: '{sintoma_atual}'. Horário reservado: '{horario_atual}'." if sintoma_atual else "Ainda não sabemos o sintoma."
     
+    # GPS DE OBJETIVOS (Para a IA nunca mais se perder ou pedir a coisa errada)
+    mapa_objetivos = {
+        "TRIAGEM": "Seu objetivo agora é descobrir APENAS o sintoma ou especialidade médica. Não peça nome nem horário ainda.",
+        "FORMA_PAGAMENTO": "Seu objetivo agora é descobrir se o atendimento será Particular ou por Plano de Saúde.",
+        "AGENDAMENTO": f"Seu objetivo agora é fazer o paciente escolher um destes horários: {vagas_txt}.",
+        "DADOS_NOME": "Seu objetivo agora é pedir o nome completo do paciente.",
+        "DADOS_CPF": "Seu objetivo agora é pedir o CPF (11 números)."
+    }
+    objetivo_atual = mapa_objetivos.get(estado_atual, "Avançar no atendimento.")
+
     prompt_sistema = f"""Você é {NOME_ATENDENTE}, Concierge de Saúde premium da {NOME_CLINICA}.
-Etapa exata da coleta agora: {estado_atual}.
-Contexto do paciente: {contexto}
-Vagas hoje: {vagas_txt}.
+ESTADO ATUAL DO FUNIL: {estado_atual}
+SUA MISSÃO IMEDIATA: {objetivo_atual}
 
-Mensagem do paciente: "{mensagem_paciente}".
+Contexto atual: {contexto}
+Mensagem do paciente: "{mensagem_paciente}"
 
-🛡️ REGRAS DE OURO E BLINDAGEM JURÍDICA (CRÍTICO):
-1. LEI CFM: Você é do setor ADMINISTRATIVO. NUNCA diagnostique, NUNCA prescreva, NUNCA avalie gravidade de sintomas e NUNCA prometa cura.
-2. BLINDAGEM DE ASSUNTO: Se o paciente falar sobre investimentos, negócios, política, problemas da vida, acidentes, ou fizer perguntas fora do escopo médico-administrativo, CORTE O ASSUNTO com extrema elegância e firmeza.
-3. FLUXO IMPECÁVEL: Ao cortar um assunto, você OBRIGATORIAMENTE deve puxar a conversa de volta fazendo a pergunta da etapa atual ({estado_atual}). Nunca pule etapas.
-4. DISCRIÇÃO: Nunca repita a doença do paciente na frase. Não use clichês baratos ("Entendo sua dor", "Sinto muito"). Seja direto, resolutivo e sofisticado.
+🛡️ REGRAS INQUEBRÁVEIS (PUNIÇÃO SE DESCUMPRIR):
+1. PALAVRAS PROIBIDAS: NUNCA use as palavras "Entendo", "Compreendo", "Desculpe", "Sinto muito" ou "Certo". Fale direto e com elegância. Exemplo: se ele reclamar, diga "Tem razão. Vamos resolver isso. Qual é a sua especialidade?"
+2. FOCO NO OBJETIVO: Se o paciente enviou uma mensagem vaga (ex: "Quero uma consulta"), ele NÃO cumpriu o objetivo. Você deve retornar "forneceu_dado_correto": false e FAZER A PERGUNTA do seu objetivo atual.
+3. BLINDAGEM CFM E ASSUNTOS: Não prescreva, não diagnostique e corte assuntos fora da clínica com firmeza, puxando de volta para o objetivo atual.
+4. DISCRIÇÃO: Nunca repita a doença do paciente.
 
 Retorne APENAS um JSON válido:
 {{
-    "forneceu_dado_correto": true ou false (true se a resposta avança a etapa atual, false se for desvio ou pergunta),
-    "resposta_concierge": "Sua resposta cortando a dúvida/assunto com classe e PEDINDO O DADO DA ETAPA ATUAL. (vazio se true)",
-    "dado_extraido": "O dado puro que ele passou (ex: nome, horário, CPF, forma de pagamento) ou null"
+    "forneceu_dado_correto": true ou false (true APENAS SE ele respondeu diretamente à SUA MISSÃO IMEDIATA. Qualquer outra coisa é false),
+    "resposta_concierge": "Sua resposta cortando desvios, tirando dúvidas e FINALIZANDO com a pergunta da sua Missão Imediata. (Vazio se true)",
+    "dado_extraido": "O dado puro que ele passou (ex: a especialidade, a forma de pagamento, o nome) ou null"
 }}"""
 
     payload = {
@@ -139,9 +149,7 @@ def webhook():
         cur.execute("SELECT estado, nome, cpf, sintoma, horario, ultima_msg FROM sessoes WHERE telefone=%s", (telefone,))
         row = cur.fetchone()
 
-        # -----------------------------------------------------
-        # 1. BOAS-VINDAS (Primeiro Contato)
-        # -----------------------------------------------------
+        # 1. BOAS-VINDAS
         if not row:
             estado, nome, cpf, sintoma, horario, ultima_msg = "TRIAGEM", None, None, None, None, msg_clean
             cur.execute("INSERT INTO sessoes (telefone, estado, ultima_msg) VALUES (%s, %s, %s)", (telefone, estado, ultima_msg))
@@ -159,18 +167,13 @@ def webhook():
         vagas_lista = [v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5] for v in raw_vagas if v[0]]
         vagas_txt = ", ".join(vagas_lista) if vagas_lista else ""
 
-        # -----------------------------------------------------
-        # 2. BLINDAGENS NATIVAS E AMNÉSIA
-        # -----------------------------------------------------
-
-        # EMERGENCIAS (Risco de Vida / CFM)
+        # 2. BLINDAGENS NATIVAS
         gatilhos_emergencia = ["passando mal", "infartando", "dor no peito", "explodir", "socorro", "morrendo", "acidente", "sangrando", "agonia"]
         if any(p in msg_lower for p in gatilhos_emergencia):
             resposta = "🚨 *ATENÇÃO:* Este é um canal exclusivamente administrativo e não realiza pronto-atendimento. Pelo seu relato, ligue imediatamente para o *SAMU (192)* ou dirija-se ao Pronto Socorro mais próximo."
             enviar_whatsapp(telefone, resposta)
             return "OK", 200
 
-        # OVERRIDE GLOBAL
         if any(p in msg_lower for p in ["início", "inicio", "recomeçar", "voltar do zero", "cancelar tudo"]) and estado != "TRIAGEM":
             estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
             resposta = "Feito. Cancelei o atendimento anterior. Qual é o sintoma ou especialidade para começarmos?"
@@ -179,14 +182,12 @@ def webhook():
             enviar_whatsapp(telefone, resposta)
             return "OK", 200
 
-        # PAUSA HUMANA
         if any(p in msg_lower for p in ["espera", "aguarda", "um momento", "vou procurar", "vou pegar", "ja volto", "já volto"]):
             cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg_clean, telefone))
             conn.commit()
             enviar_whatsapp(telefone, "Sem pressa, faça no seu tempo. Fico no aguardo.")
             return "OK", 200
 
-        # RECUSA LGPD
         recusa_cpf = ["não vou", "nao vou", "não posso", "nao posso", "não quero", "recuso"]
         if estado == "DADOS_CPF" and any(p in msg_lower for p in recusa_cpf):
             cpf, estado = "RECUSADO_LGPD", "CONFIRMADO"
@@ -197,7 +198,7 @@ def webhook():
             enviar_whatsapp(telefone, resposta)
             return "OK", 200
 
-        # AMNÉSIA CIRÚRGICA & MULTI AGENDAMENTOS
+        # AMNÉSIA & MULTI AGENDAMENTOS
         if estado == "CONFIRMADO":
             if any(p in msg_lower for p in ["sim", "ssim", "quero", "pessoas", "pessoa", "mais", "ok", "pode", "marcar"]):
                 estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
@@ -211,7 +212,6 @@ def webhook():
                 enviar_whatsapp(telefone, resposta)
                 return "OK", 200
             else:
-                # O paciente mandou mensagem horas/dias depois. Tratamos como novo.
                 estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
                 resposta = f"Olá novamente! Aqui é a {NOME_ATENDENTE} da {NOME_CLINICA}. Como posso te ajudar com a sua saúde hoje?"
                 cur.execute("UPDATE sessoes SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s WHERE telefone=%s", (estado, nome, cpf, sintoma, horario, msg_clean, telefone))
@@ -219,13 +219,11 @@ def webhook():
                 enviar_whatsapp(telefone, resposta)
                 return "OK", 200
 
-        # -----------------------------------------------------
         # 3. AVALIAÇÃO DO CÉREBRO GPT-4o
-        # -----------------------------------------------------
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, sintoma, horario)
         
         if not analise.get("forneceu_dado_correto"):
-            resposta = analise.get("resposta_concierge", "Desculpe, pode repetir por favor?")
+            resposta = analise.get("resposta_concierge", "Pode repetir de forma mais clara, por favor?")
             cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg_clean, telefone))
             conn.commit()
             enviar_whatsapp(telefone, resposta)
@@ -235,9 +233,7 @@ def webhook():
         dado_limpo = str(dado_extraido) if dado_extraido is not None else msg_clean
         resposta = ""
 
-        # -----------------------------------------------------
-        # 4. MOTOR DE FLUXO (ADAPTÁVEL POR TIPO DE CLÍNICA)
-        # -----------------------------------------------------
+        # 4. MOTOR DE FLUXO ADAPTÁVEL
         if estado == "TRIAGEM":
             sintoma = dado_limpo
             if TIPO_CLINICA == "AMBOS":
@@ -315,13 +311,13 @@ def reset():
         cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
         for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
         conn.commit()
-        return "✅ RESET V18 OK", 200
+        return "✅ RESET V19 OK", 200
     except Exception as e: return str(e), 500
     finally:
         if conn: conn.close()
 
 @app.route('/')
-def home(): return "🚀 IMPÉRIO DE SILÍCIO V18 (ELITE PREMIUM) ATIVO", 200
+def home(): return "🚀 IMPÉRIO DE SILÍCIO V19 (ELITE PREMIUM) ATIVO", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
