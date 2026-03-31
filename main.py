@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V25 — AGENTE DE ELITE ESPECIALISTA
-# TRIAGEM INVESTIGATIVA: SINTOMA + IDADE + STATUS (1ª VEZ/RETORNO)
+# 🚀 IMPÉRIO DE SILÍCIO V26 — AGENTE DE ELITE (FINAL DE MERCADO)
+# FAST MAPPING + TRIAGEM LOGÍSTICA + FECHAMENTO RÁPIDO
 # ============================================
 
 import os
@@ -10,7 +10,7 @@ import re
 import json
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V25 - ESPECIALISTA ATIVO")
+print("🚀 IMPÉRIO DE SILÍCIO V26 - VERSÃO FINAL ATIVA")
 
 app = Flask(__name__)
 
@@ -65,18 +65,18 @@ def enviar_whatsapp(telefone, mensagem):
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o (INVESTIGATIVO)
+# 🧠 CÉREBRO GPT-4o (FAST MAPPING DE ELITE)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, sintoma_atual, horario_atual):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
     mapa_objetivos = {
-        "TRIAGEM": "Sua missão é descobrir o SINTOMA/ESPECIALIDADE e a IDADE do paciente. Se for criança, identifique a necessidade de pediatria.",
-        "STATUS_CONSULTA": "Descobrir se é a PRIMEIRA VEZ do paciente na clínica ou se é um RETORNO.",
+        "TRIAGEM": "Identificar o sintoma e mapear IMEDIATAMENTE para o especialista correto. Se o paciente for vago ('não sei', 'qualquer coisa'), direcione para Clínico Geral.",
+        "STATUS_CONSULTA": "Descobrir se é a PRIMEIRA VEZ do paciente na clínica ou se é um RETORNO (Se for criança, confirme a idade).",
         "FORMA_PAGAMENTO": "Descobrir se o atendimento será Particular ou por Plano de Saúde.",
         "AGENDAMENTO": f"Fazer o paciente escolher um horário: {vagas_txt}.",
-        "DADOS_NOME": "Coletar o Nome Completo do paciente.",
+        "DADOS_NOME": "Coletar o Nome Completo.",
         "DADOS_CPF": "Coletar os 11 números do CPF."
     }
 
@@ -84,16 +84,26 @@ def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, sintoma_atual, h
 ESTADO DO FUNIL: {estado_atual}
 MISSÃO ATUAL: {mapa_objetivos.get(estado_atual)}
 
-🛡️ PROTOCOLO DE ELITE (V25):
-1. INVESTIGAÇÃO ATIVA: Se o paciente quer pediatra ou ortopedista, pergunte a idade e o que aconteceu (ex: queda, dor crônica). 
-2. INDICAÇÃO TÉCNICA: Sempre confirme o especialista indicado (ex: Ortopedista Infantil) antes de avançar.
-3. FLUXO LOGÍSTICO: Não ofereça horários antes de saber se é Primeira Vez ou Retorno e qual a forma de pagamento.
-4. HUMANIZAÇÃO: Seja acolhedora, eficiente e direta. Nunca use "Entendo", "Compreendo" ou "Lamento".
+🏥 MAPEAMENTO RÁPIDO DE SINTOMAS (USE ISTO):
+- Estômago/azia/gastrite -> Gastroenterologista
+- Cabeça -> Neurologista
+- Peito -> Cardiologista
+- Dente -> Dentista
+- Visão/Olhos -> Oftalmologista
+- Ansiedade/Emocional -> Psicólogo
+- Muscular/Coluna/Osso -> Ortopedista
+- Check-up / Não sabe -> Clínico Geral
+
+🛡️ REGRAS DE ELITE (V26):
+1. DIRETO AO PONTO: Identificou o sintoma? Responda: "Perfeito. Para esse caso, o ideal é atendimento com um [ESPECIALISTA]." E na MESMA frase puxe a próxima pergunta do funil (ex: é a primeira vez?).
+2. NÃO DIAGNOSTIQUE: Apenas direcione para o especialista.
+3. CONTROLE TOTAL: Se o paciente desviar o assunto, diga: "Consigo te ajudar com isso depois, mas primeiro vamos garantir seu atendimento." e repita a pergunta.
+4. PROIBIDO: "Entendo", "Compreendo", "Lamento". Seja rápida, resolutiva e profissional.
 
 Retorne APENAS JSON:
 {{
     "forneceu_dado_correto": true ou false,
-    "resposta_concierge": "Sua resposta investigativa e humana, tirando dúvidas e pedindo o dado da MISSÃO ATUAL. (Vazio se true)",
+    "resposta_concierge": "Sua resposta aplicando o mapeamento rápido e puxando para a próxima etapa. (Vazio se true)",
     "dado_extraido": "O dado puro identificado ou null"
 }}"""
 
@@ -127,11 +137,12 @@ def webhook():
         cur.execute("SELECT estado, nome, cpf, sintoma, horario, ultima_msg FROM sessoes WHERE telefone=%s", (telefone,))
         row = cur.fetchone()
 
+        # 1. ABERTURA PADRÃO DE ELITE
         if not row:
             estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
             cur.execute("INSERT INTO sessoes (telefone, estado, ultima_msg) VALUES (%s, %s, %s)", (telefone, estado, msg_clean))
             conn.commit()
-            enviar_whatsapp(telefone, f"Olá! Sou a {NOME_ATENDENTE}, concierge da {NOME_CLINICA}. Como posso cuidar da sua saúde hoje?")
+            enviar_whatsapp(telefone, f"Olá! Seja bem-vindo(a) à {NOME_CLINICA}. Sou a {NOME_ATENDENTE} e vou te ajudar com seu atendimento agora. Para te direcionar corretamente, me diga: qual é o sintoma ou o tipo de consulta que você precisa?")
             return "OK", 200
         else: estado, nome, cpf, sintoma, horario, ultima_msg = row
 
@@ -140,10 +151,10 @@ def webhook():
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
         vagas_txt = ", ".join([v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5] for v in cur.fetchall()])
 
-        # 1. ESCUDOS DE SEGURANÇA (BANDREIRAS VERMELHAS)
-        emergencias = ["infarto", "morrendo", "falta de ar", "sangramento intenso", "socorro", "desmaiou"]
+        # 2. ESCUDOS (URGÊNCIA E LGPD)
+        emergencias = ["infarto", "morrendo", "falta de ar", "sangramento grave", "dor muito forte", "socorro", "desmaiou"]
         if any(p in msg_lower for p in emergencias):
-            enviar_whatsapp(telefone, "🚨 *ATENÇÃO:* Pelos sintomas relatados, isso pode ser uma urgência. Ligue agora para o *SAMU (192)* ou vá ao Pronto Socorro mais próximo.")
+            enviar_whatsapp(telefone, "🚨 Isso pode ser uma situação de urgência. Procure imediatamente um pronto atendimento ou ligue para o SAMU (192).")
             return "OK", 200
 
         if any(p in msg_lower for p in ["recepção", "pessoalmente", "na hora"]) and estado == "DADOS_CPF":
@@ -153,20 +164,20 @@ def webhook():
             enviar_whatsapp(telefone, f"Perfeito! Reserva para as {horario} confirmada. Pode informar os dados na recepção. Deseja marcar para mais alguém?")
             return "OK", 200
 
-        # 2. ANALISE IA
+        # 3. ANALISE IA E FAST MAPPING
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, sintoma, horario)
         if not analise.get("forneceu_dado_correto"):
-            enviar_whatsapp(telefone, analise.get("resposta_concierge", "Poderia detalhar melhor, por favor?"))
+            enviar_whatsapp(telefone, analise.get("resposta_concierge", "Poderia ser um pouco mais específico?"))
             return "OK", 200
 
         dado_limpo = str(analise.get("dado_extraido", msg_clean))
 
-        # 3. MOTOR DE FLUXO (PILAR DE INTEGRAÇÃO)
+        # 4. MOTOR DE PROGRESSÃO (O FECHAMENTO)
         if estado == "TRIAGEM":
             sintoma, estado = dado_limpo, "STATUS_CONSULTA"
-            resposta = analise.get("resposta_concierge") or "Entendido. Esta será sua primeira consulta conosco ou é um retorno?"
+            resposta = analise.get("resposta_concierge") or "Perfeito. Já identifiquei a especialidade. Esta será sua primeira consulta conosco ou é um retorno?"
             if not analise.get("resposta_concierge"):
-                 resposta = "Certo. É sua primeira consulta na clínica ou seria um retorno?"
+                 resposta = "Perfeito. Esta será sua primeira consulta conosco ou é um retorno?"
 
         elif estado == "STATUS_CONSULTA":
             sintoma = f"{sintoma} | Status: {dado_limpo}"
@@ -176,7 +187,7 @@ def webhook():
         elif estado == "FORMA_PAGAMENTO":
             sintoma = f"{sintoma} | Pgto: {dado_limpo}"
             estado = "AGENDAMENTO"
-            resposta = f"Perfeito. Nossos horários livres hoje são: {vagas_txt}. Qual prefere?"
+            resposta = f"Nossos horários disponíveis hoje são: {vagas_txt}. Qual deles funciona melhor para você?"
 
         elif estado == "AGENDAMENTO":
             match = re.search(r'(\d{1,2})', dado_limpo)
@@ -184,13 +195,13 @@ def webhook():
                 h_final = next((v for v in vagas_txt.split(", ") if v.startswith(match.group(1).zfill(2))), None)
                 if h_final:
                     horario, estado = h_final, "DADOS_NOME"
-                    resposta = f"Ótimo. O horário das {horario} está reservado. Qual o nome completo do paciente?"
+                    resposta = f"Horário das {horario} reservado. Qual o nome completo do paciente?"
                 else: resposta = f"Horários disponíveis: {vagas_txt}"
             else: resposta = f"Qual horário deseja: {vagas_txt}?"
 
         elif estado == "DADOS_NOME":
             nome, estado = dado_limpo, "DADOS_CPF"
-            resposta = "Para finalizar sua ficha, digite os 11 números do CPF (ou avise se prefere dar na recepção)."
+            resposta = "Para finalizar, digite os 11 números do CPF (ou avise se prefere dar na recepção)."
 
         elif estado == "DADOS_CPF":
             cpf_limpo = re.sub(r'\D', '', dado_limpo)
@@ -215,10 +226,10 @@ def reset():
     cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
     for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
     conn.commit(); conn.close()
-    return "✅ RESET V25 OK"
+    return "✅ RESET V26 OK"
 
 @app.route('/')
-def home(): return "🚀 V25 ATIVA"
+def home(): return "🚀 V26 ATIVA - FINAL DE MERCADO"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
