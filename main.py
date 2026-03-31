@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V26 — AGENTE DE ELITE (FINAL DE MERCADO)
-# FAST MAPPING + TRIAGEM LOGÍSTICA + FECHAMENTO RÁPIDO
+# 🚀 IMPÉRIO DE SILÍCIO V27 — AGENTE DE ELITE (FIM DOS LOOPS)
+# SIMPLIFICAÇÃO DE FLUXO + PROGRESSÃO FORÇADA
 # ============================================
 
 import os
@@ -10,7 +10,7 @@ import re
 import json
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V26 - VERSÃO FINAL ATIVA")
+print("🚀 IMPÉRIO DE SILÍCIO V27 - ANTI-LOOP ATIVO")
 
 app = Flask(__name__)
 
@@ -65,46 +65,36 @@ def enviar_whatsapp(telefone, mensagem):
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o (FAST MAPPING DE ELITE)
+# 🧠 CÉREBRO GPT-4o (FLEXÍVEL E PROGRESSIVO)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, sintoma_atual, horario_atual):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
     mapa_objetivos = {
-        "TRIAGEM": "Identificar o sintoma e mapear IMEDIATAMENTE para o especialista correto. Se o paciente for vago ('não sei', 'qualquer coisa'), direcione para Clínico Geral.",
-        "STATUS_CONSULTA": "Descobrir se é a PRIMEIRA VEZ do paciente na clínica ou se é um RETORNO (Se for criança, confirme a idade).",
+        "TRIAGEM": "Identificar o SINTOMA ou ESPECIALIDADE. Aceite qualquer descrição de dor ou necessidade médica. Não exija formatos perfeitos.",
+        "STATUS_CONSULTA": "Descobrir se é a PRIMEIRA VEZ do paciente na clínica ou um RETORNO.",
         "FORMA_PAGAMENTO": "Descobrir se o atendimento será Particular ou por Plano de Saúde.",
-        "AGENDAMENTO": f"Fazer o paciente escolher um horário: {vagas_txt}.",
-        "DADOS_NOME": "Coletar o Nome Completo.",
+        "AGENDAMENTO": f"Fazer o paciente escolher UM horário: {vagas_txt}.",
+        "DADOS_NOME": "Coletar o Nome do paciente.",
         "DADOS_CPF": "Coletar os 11 números do CPF."
     }
 
-    prompt_sistema = f"""Você é {NOME_ATENDENTE}, Concierge de Saúde de elite da {NOME_CLINICA}.
+    prompt_sistema = f"""Você é {NOME_ATENDENTE}, Concierge de Saúde da {NOME_CLINICA}.
 ESTADO DO FUNIL: {estado_atual}
 MISSÃO ATUAL: {mapa_objetivos.get(estado_atual)}
 
-🏥 MAPEAMENTO RÁPIDO DE SINTOMAS (USE ISTO):
-- Estômago/azia/gastrite -> Gastroenterologista
-- Cabeça -> Neurologista
-- Peito -> Cardiologista
-- Dente -> Dentista
-- Visão/Olhos -> Oftalmologista
-- Ansiedade/Emocional -> Psicólogo
-- Muscular/Coluna/Osso -> Ortopedista
-- Check-up / Não sabe -> Clínico Geral
-
-🛡️ REGRAS DE ELITE (V26):
-1. DIRETO AO PONTO: Identificou o sintoma? Responda: "Perfeito. Para esse caso, o ideal é atendimento com um [ESPECIALISTA]." E na MESMA frase puxe a próxima pergunta do funil (ex: é a primeira vez?).
-2. NÃO DIAGNOSTIQUE: Apenas direcione para o especialista.
-3. CONTROLE TOTAL: Se o paciente desviar o assunto, diga: "Consigo te ajudar com isso depois, mas primeiro vamos garantir seu atendimento." e repita a pergunta.
-4. PROIBIDO: "Entendo", "Compreendo", "Lamento". Seja rápida, resolutiva e profissional.
+🛡️ REGRAS ANTI-LOOP (OBRIGATÓRIO):
+1. SEJA FLEXÍVEL: Se o paciente respondeu de forma minimamente compreensível (ex: "dor no corpo", "30 anos"), retorne `forneceu_dado_correto: true` e SIGA EM FRENTE. Não fique repetindo a pergunta.
+2. DIRETO AO PONTO: Identificou o sintoma? Diga: "Perfeito. Para esse caso, o ideal é o [ESPECIALISTA]." e já puxe a próxima pergunta do funil (ex: é a primeira vez?).
+3. SEM SAUDAÇÕES REPETIDAS: Nunca inicie suas respostas de correção com "Olá", "Oi" ou "Boa noite" no meio da conversa.
+4. PROIBIDO: "Entendo", "Compreendo", "Lamento".
 
 Retorne APENAS JSON:
 {{
-    "forneceu_dado_correto": true ou false,
-    "resposta_concierge": "Sua resposta aplicando o mapeamento rápido e puxando para a próxima etapa. (Vazio se true)",
-    "dado_extraido": "O dado puro identificado ou null"
+    "forneceu_dado_correto": true ou false (Seja generoso na avaliação para não travar o bot),
+    "resposta_concierge": "Sua resposta guiando a conversa (Vazio se true)",
+    "dado_extraido": "O dado puro ou null"
 }}"""
 
     payload = {
@@ -137,12 +127,11 @@ def webhook():
         cur.execute("SELECT estado, nome, cpf, sintoma, horario, ultima_msg FROM sessoes WHERE telefone=%s", (telefone,))
         row = cur.fetchone()
 
-        # 1. ABERTURA PADRÃO DE ELITE
         if not row:
             estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
             cur.execute("INSERT INTO sessoes (telefone, estado, ultima_msg) VALUES (%s, %s, %s)", (telefone, estado, msg_clean))
             conn.commit()
-            enviar_whatsapp(telefone, f"Olá! Seja bem-vindo(a) à {NOME_CLINICA}. Sou a {NOME_ATENDENTE} e vou te ajudar com seu atendimento agora. Para te direcionar corretamente, me diga: qual é o sintoma ou o tipo de consulta que você precisa?")
+            enviar_whatsapp(telefone, f"Olá! Seja bem-vindo(a) à {NOME_CLINICA}. Sou a {NOME_ATENDENTE}. Para te direcionar corretamente, me diga: qual é o sintoma ou o tipo de consulta que você precisa?")
             return "OK", 200
         else: estado, nome, cpf, sintoma, horario, ultima_msg = row
 
@@ -151,7 +140,6 @@ def webhook():
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
         vagas_txt = ", ".join([v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5] for v in cur.fetchall()])
 
-        # 2. ESCUDOS (URGÊNCIA E LGPD)
         emergencias = ["infarto", "morrendo", "falta de ar", "sangramento grave", "dor muito forte", "socorro", "desmaiou"]
         if any(p in msg_lower for p in emergencias):
             enviar_whatsapp(telefone, "🚨 Isso pode ser uma situação de urgência. Procure imediatamente um pronto atendimento ou ligue para o SAMU (192).")
@@ -164,20 +152,24 @@ def webhook():
             enviar_whatsapp(telefone, f"Perfeito! Reserva para as {horario} confirmada. Pode informar os dados na recepção. Deseja marcar para mais alguém?")
             return "OK", 200
 
-        # 3. ANALISE IA E FAST MAPPING
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, sintoma, horario)
-        if not analise.get("forneceu_dado_correto"):
-            enviar_whatsapp(telefone, analise.get("resposta_concierge", "Poderia ser um pouco mais específico?"))
-            return "OK", 200
+        
+        # AQUI É ONDE O LOOP MORRE: Se a IA travar de bobeira, o Python avança mesmo assim se houver texto
+        if not analise.get("forneceu_dado_correto") and len(msg_clean) > 3:
+            # Se o paciente digitou algo plausível, mas a IA recusou, ignoramos a recusa na Triagem
+            if estado == "TRIAGEM":
+                analise["forneceu_dado_correto"] = True
+            else:
+                enviar_whatsapp(telefone, analise.get("resposta_concierge", "Poderia ser um pouco mais claro?"))
+                return "OK", 200
 
         dado_limpo = str(analise.get("dado_extraido", msg_clean))
 
-        # 4. MOTOR DE PROGRESSÃO (O FECHAMENTO)
         if estado == "TRIAGEM":
             sintoma, estado = dado_limpo, "STATUS_CONSULTA"
             resposta = analise.get("resposta_concierge") or "Perfeito. Já identifiquei a especialidade. Esta será sua primeira consulta conosco ou é um retorno?"
             if not analise.get("resposta_concierge"):
-                 resposta = "Perfeito. Esta será sua primeira consulta conosco ou é um retorno?"
+                 resposta = "Certo, entendi. Esta será sua primeira consulta conosco ou é um retorno?"
 
         elif estado == "STATUS_CONSULTA":
             sintoma = f"{sintoma} | Status: {dado_limpo}"
@@ -226,10 +218,10 @@ def reset():
     cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
     for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
     conn.commit(); conn.close()
-    return "✅ RESET V26 OK"
+    return "✅ RESET V27 OK"
 
 @app.route('/')
-def home(): return "🚀 V26 ATIVA - FINAL DE MERCADO"
+def home(): return "🚀 V27 ATIVA - FIM DOS LOOPS"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
