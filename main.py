@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V27 — AGENTE DE ELITE (FIM DOS LOOPS)
-# SIMPLIFICAÇÃO DE FLUXO + PROGRESSÃO FORÇADA
+# 🚀 IMPÉRIO DE SILÍCIO V28 — AGENTE DE ELITE
+# CORREÇÃO CIRÚRGICA: QUEBRA DE LOOP "PRIMEIRA VEZ"
 # ============================================
 
 import os
@@ -10,7 +10,7 @@ import re
 import json
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V27 - ANTI-LOOP ATIVO")
+print("🚀 IMPÉRIO DE SILÍCIO V28 - ANTI-LOOP ATIVO")
 
 app = Flask(__name__)
 
@@ -65,15 +65,15 @@ def enviar_whatsapp(telefone, mensagem):
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o (FLEXÍVEL E PROGRESSIVO)
+# 🧠 CÉREBRO GPT-4o 
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, sintoma_atual, horario_atual):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
     mapa_objetivos = {
-        "TRIAGEM": "Identificar o SINTOMA ou ESPECIALIDADE. Aceite qualquer descrição de dor ou necessidade médica. Não exija formatos perfeitos.",
-        "STATUS_CONSULTA": "Descobrir se é a PRIMEIRA VEZ do paciente na clínica ou um RETORNO.",
+        "TRIAGEM": "Identificar o SINTOMA ou ESPECIALIDADE. Aceite qualquer descrição de dor.",
+        "STATUS_CONSULTA": "Descobrir se é a PRIMEIRA VEZ do paciente na clínica ou um RETORNO. Se a resposta contiver 'primeira', 'vez' ou 'retorno', OBRIGATORIAMENTE retorne true.",
         "FORMA_PAGAMENTO": "Descobrir se o atendimento será Particular ou por Plano de Saúde.",
         "AGENDAMENTO": f"Fazer o paciente escolher UM horário: {vagas_txt}.",
         "DADOS_NOME": "Coletar o Nome do paciente.",
@@ -85,14 +85,14 @@ ESTADO DO FUNIL: {estado_atual}
 MISSÃO ATUAL: {mapa_objetivos.get(estado_atual)}
 
 🛡️ REGRAS ANTI-LOOP (OBRIGATÓRIO):
-1. SEJA FLEXÍVEL: Se o paciente respondeu de forma minimamente compreensível (ex: "dor no corpo", "30 anos"), retorne `forneceu_dado_correto: true` e SIGA EM FRENTE. Não fique repetindo a pergunta.
-2. DIRETO AO PONTO: Identificou o sintoma? Diga: "Perfeito. Para esse caso, o ideal é o [ESPECIALISTA]." e já puxe a próxima pergunta do funil (ex: é a primeira vez?).
-3. SEM SAUDAÇÕES REPETIDAS: Nunca inicie suas respostas de correção com "Olá", "Oi" ou "Boa noite" no meio da conversa.
+1. SEJA FLEXÍVEL: Se o paciente respondeu de forma minimamente compreensível (ex: "dor no corpo", "primeira vez"), retorne `forneceu_dado_correto: true` e SIGA EM FRENTE.
+2. DIRETO AO PONTO: Identificou o dado? Confirme e puxe a próxima pergunta do funil.
+3. SEM SAUDAÇÕES REPETIDAS: Nunca inicie suas respostas de correção com "Olá", "Oi" ou "Boa noite".
 4. PROIBIDO: "Entendo", "Compreendo", "Lamento".
 
 Retorne APENAS JSON:
 {{
-    "forneceu_dado_correto": true ou false (Seja generoso na avaliação para não travar o bot),
+    "forneceu_dado_correto": true ou false,
     "resposta_concierge": "Sua resposta guiando a conversa (Vazio se true)",
     "dado_extraido": "O dado puro ou null"
 }}"""
@@ -140,7 +140,7 @@ def webhook():
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
         vagas_txt = ", ".join([v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5] for v in cur.fetchall()])
 
-        emergencias = ["infarto", "morrendo", "falta de ar", "sangramento grave", "dor muito forte", "socorro", "desmaiou"]
+        emergencias = ["infarto", "morrendo", "falta de ar", "sangramento", "dor forte", "socorro", "desmaiou"]
         if any(p in msg_lower for p in emergencias):
             enviar_whatsapp(telefone, "🚨 Isso pode ser uma situação de urgência. Procure imediatamente um pronto atendimento ou ligue para o SAMU (192).")
             return "OK", 200
@@ -154,16 +154,19 @@ def webhook():
 
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, sintoma, horario)
         
-        # AQUI É ONDE O LOOP MORRE: Se a IA travar de bobeira, o Python avança mesmo assim se houver texto
-        if not analise.get("forneceu_dado_correto") and len(msg_clean) > 3:
-            # Se o paciente digitou algo plausível, mas a IA recusou, ignoramos a recusa na Triagem
-            if estado == "TRIAGEM":
+        # --- BYPASS DE EMERGÊNCIA (A CURA DO LOOP) ---
+        if not analise.get("forneceu_dado_correto"):
+            if estado == "TRIAGEM" and len(msg_clean) > 3:
+                analise["forneceu_dado_correto"] = True
+            elif estado == "STATUS_CONSULTA" and any(p in msg_lower for p in ["primeira", "1", "retorno", "ja fui", "já fui"]):
+                analise["forneceu_dado_correto"] = True
+            elif estado == "FORMA_PAGAMENTO" and any(p in msg_lower for p in ["particular", "plano", "convenio", "convênio", "unimed"]):
                 analise["forneceu_dado_correto"] = True
             else:
                 enviar_whatsapp(telefone, analise.get("resposta_concierge", "Poderia ser um pouco mais claro?"))
                 return "OK", 200
 
-        dado_limpo = str(analise.get("dado_extraido", msg_clean))
+        dado_limpo = str(analise.get("dado_extraido") or msg_clean)
 
         if estado == "TRIAGEM":
             sintoma, estado = dado_limpo, "STATUS_CONSULTA"
@@ -218,10 +221,10 @@ def reset():
     cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
     for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
     conn.commit(); conn.close()
-    return "✅ RESET V27 OK"
+    return "✅ RESET V28 OK"
 
 @app.route('/')
-def home(): return "🚀 V27 ATIVA - FIM DOS LOOPS"
+def home(): return "🚀 V28 ATIVA - ANTI-LOOP"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
