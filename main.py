@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V20 — AGENTE DE ELITE PREMIUM
-# COLEIRA DE AÇO + TRAVA DE FUNIL + ANTI-ALUCINAÇÃO
+# 🚀 IMPÉRIO DE SILÍCIO V21 — AGENTE DE ELITE PREMIUM
+# INTELIGÊNCIA EMOCIONAL + DIRECIONAMENTO DE ESPECIALIDADE
 # ============================================
 
 import os
@@ -10,7 +10,7 @@ import re
 import json
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V20 - ELITE PREMIUM ATIVO")
+print("🚀 IMPÉRIO DE SILÍCIO V21 - ELITE PREMIUM ATIVO")
 
 app = Flask(__name__)
 
@@ -68,7 +68,7 @@ def enviar_whatsapp(telefone, mensagem):
         print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO DE IA (MOTOR GPT-4o BLINDADO)
+# 🧠 CÉREBRO DE IA (MOTOR GPT-4o COM RESPOSTA ATIVA)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, sintoma_atual, horario_atual):
     url = "https://api.openai.com/v1/chat/completions"
@@ -76,13 +76,12 @@ def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, sintoma_atual, h
     
     contexto = f"Sintoma/Especialidade: '{sintoma_atual}'. Horário: '{horario_atual}'." if sintoma_atual else "Ainda não sabemos o sintoma."
     
-    # A NOVA COLEIRA DE AÇO: Definindo exatamente o que é aceito.
     mapa_objetivos = {
-        "TRIAGEM": "Sua missão: Descobrir o SINTOMA CLARO ou a ESPECIALIDADE (Ex: cardiologista, dor nas costas). ATENÇÃO: Palavras como 'consulta', 'médico' ou 'exame' NÃO SÃO VÁLIDAS. Se ele disser só isso, retorne false e pergunte o que ele sente.",
-        "FORMA_PAGAMENTO": "Sua missão: Descobrir se o pagamento será Particular ou por Plano de Saúde.",
-        "AGENDAMENTO": f"Sua missão: Fazer o paciente escolher APENAS UM destes horários: {vagas_txt}.",
-        "DADOS_NOME": "Sua missão: Coletar o NOME COMPLETO do paciente.",
-        "DADOS_CPF": "Sua missão: Coletar o CPF (11 números)."
+        "TRIAGEM": "Descobrir o SINTOMA CLARO ou a ESPECIALIDADE (Ex: cardiologista, dor nas costas). Se disser apenas 'consulta' ou 'exame', exija saber o sintoma.",
+        "FORMA_PAGAMENTO": "Descobrir se o pagamento será Particular ou por Plano de Saúde.",
+        "AGENDAMENTO": f"Fazer o paciente escolher APENAS UM destes horários: {vagas_txt}.",
+        "DADOS_NOME": "Coletar o NOME COMPLETO do paciente.",
+        "DADOS_CPF": "Coletar o CPF (11 números)."
     }
     objetivo_atual = mapa_objetivos.get(estado_atual, "Avançar no atendimento.")
 
@@ -94,15 +93,16 @@ Contexto: {contexto}
 Mensagem do paciente: "{mensagem_paciente}"
 
 🛡️ REGRAS INQUEBRÁVEIS (OBRIGATÓRIO):
-1. PROIBIDO INVENTAR: NUNCA sugira pular etapas. Nunca diga "vamos agendar primeiro e ver o médico depois". Se ele não deu o dado exato pedido na missão, trave o processo, retorne false e exija a informação com educação.
-2. EXIGÊNCIA ABSOLUTA: Na Triagem, você exige a doença/especialidade. Se não estiver claro, você recusa o avanço.
-3. PALAVRAS PROIBIDAS: "Entendo", "Compreendo", "Desculpe". Seja ágil, elegante e resolutivo.
-4. DISCRIÇÃO: Nunca repita a doença do paciente.
+1. RESPONDER PARA AVANÇAR: Se o paciente fizer uma pergunta válida (como "qual especialista cuida disso?"), você OBRIGATORIAMENTE deve responder à dúvida primeiro (ex: "Para esse caso, o indicado é o Proctologista") e, NA MESMA MENSAGEM, exigir a informação do seu objetivo atual.
+2. INDICAÇÃO X DIAGNÓSTICO: Você PODE e DEVE indicar qual é o médico especialista correto para um sintoma, mas NUNCA dê diagnóstico de doenças ou tratamentos.
+3. PROIBIDO INVENTAR: Nunca sugira pular etapas.
+4. PALAVRAS PROIBIDAS: NUNCA use "Entendo", "Compreendo", "Desculpe". Seja ágil, elegante e resolutivo.
+5. DISCRIÇÃO: Nunca repita a doença do paciente explicitamente na sua resposta.
 
 Retorne APENAS um JSON válido:
 {{
-    "forneceu_dado_correto": true ou false (true APENAS SE a mensagem contiver a informação exata da sua missão atual. Qualquer dúvida, enrolação ou "quero marcar" genérico é false),
-    "resposta_concierge": "Sua resposta barrando a tentativa de pulo, tirando a dúvida e EXIGINDO o dado da etapa atual. (Deixe vazio se for true)",
+    "forneceu_dado_correto": true ou false (true APENAS SE a mensagem contiver a informação exata da sua missão. Perguntas do paciente resultam em false),
+    "resposta_concierge": "Se false, responda a pergunta do paciente com classe e LOGO EM SEGUIDA EXIJA o dado da etapa atual. (Deixe vazio se for true)",
     "dado_extraido": "O dado purificado que ele passou ou null"
 }}"""
 
@@ -167,7 +167,7 @@ def webhook():
         vagas_lista = [v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5] for v in raw_vagas if v[0]]
         vagas_txt = ", ".join(vagas_lista) if vagas_lista else ""
 
-        # 2. ESCUDOS E EXCEÇÕES GERAIS
+        # 2. ESCUDOS
         gatilhos_emergencia = ["passando mal", "infartando", "dor no peito", "explodir", "socorro", "morrendo", "acidente", "sangrando"]
         if any(p in msg_lower for p in gatilhos_emergencia):
             resposta = "🚨 *ATENÇÃO:* Este é um canal exclusivamente administrativo e não realiza pronto-atendimento. Ligue imediatamente para o *SAMU (192)*."
@@ -182,7 +182,6 @@ def webhook():
             enviar_whatsapp(telefone, resposta)
             return "OK", 200
 
-        # CORREÇÃO DO BLOCO DE CONFIRMAÇÃO E AMNÉSIA
         if estado == "CONFIRMADO":
             if any(p in msg_lower for p in ["sim", "ssim", "quero", "pessoas", "pessoa", "mais", "marcar"]):
                 estado, nome, cpf, sintoma, horario = "TRIAGEM", None, None, None, None
@@ -196,7 +195,6 @@ def webhook():
                 enviar_whatsapp(telefone, resposta)
                 return "OK", 200
             elif any(p in msg_lower for p in ["errado", "erro", "mudar", "alterar", "cancelar", "especialista", "reclamar"]):
-                # O paciente reclamou ou viu erro! Volta para triagem e devolve a vaga.
                 estado, nome, cpf, sintoma = "TRIAGEM", None, None, None
                 cur.execute("UPDATE agenda SET disponivel=TRUE WHERE hora=%s", (horario,))
                 horario = None
@@ -231,7 +229,7 @@ def webhook():
         dado_limpo = str(dado_extraido) if dado_extraido is not None else msg_clean
         resposta = ""
 
-        # 4. PROGRESSÃO BRUTAL DO FUNIL
+        # 4. PROGRESSÃO DO FUNIL
         if estado == "TRIAGEM":
             sintoma = dado_limpo
             if TIPO_CLINICA == "AMBOS":
@@ -309,13 +307,13 @@ def reset():
         cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
         for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
         conn.commit()
-        return "✅ RESET V20 OK", 200
+        return "✅ RESET V21 OK", 200
     except Exception as e: return str(e), 500
     finally:
         if conn: conn.close()
 
 @app.route('/')
-def home(): return "🚀 IMPÉRIO DE SILÍCIO V20 (ELITE PREMIUM) ATIVO", 200
+def home(): return "🚀 IMPÉRIO DE SILÍCIO V21 (ELITE PREMIUM) ATIVO", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
