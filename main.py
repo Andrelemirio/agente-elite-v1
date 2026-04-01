@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V31 — AGENTE DE ELITE (FORÇA BRUTA)
-# RACIOCÍNIO OBRIGATÓRIO (FIM DA PREGUIÇA) E BYPASS DE LOOPS
+# 🚀 IMPÉRIO DE SILÍCIO V32 — AGENTE DE ELITE (OMNIPRESENTE)
+# RECONHECIMENTO UNIVERSAL DE MÚLTIPLAS DORES 
 # ============================================
 
 import os
@@ -10,7 +10,7 @@ import re
 import json
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V31 - FORÇA BRUTA ATIVA")
+print("🚀 IMPÉRIO DE SILÍCIO V32 - OMNIPRESENTE ATIVO")
 
 app = Flask(__name__)
 
@@ -65,36 +65,37 @@ def enviar_whatsapp(telefone, mensagem):
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o (PENSAMENTO FORÇADO)
+# 🧠 CÉREBRO GPT-4o (MULTI-PROCESSAMENTO)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, sintoma_atual, horario_atual):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
     mapa_objetivos = {
-        "TRIAGEM": "O paciente informará DORES. VOCÊ DEVE OBRIGATORIAMENTE CITAR O ESPECIALISTA PARA CADA DOR NA SUA RESPOSTA. Ex: 'Para a dor X, indico o médico Y. Para a dor Z, o médico W.' Em seguida, pergunte se é a PRIMEIRA VEZ na clínica.",
-        "STATUS_CONSULTA": "Descobrir se é a primeira vez ou retorno.",
-        "FORMA_PAGAMENTO": "Descobrir se é Particular ou Plano.",
-        "AGENDAMENTO": f"Fazer o paciente escolher UM destes horários: {vagas_txt}.",
-        "DADOS_NOME": "Cumprimentar e pedir o CPF.",
+        "TRIAGEM": "O paciente informará DORES. Sua missão: 1) Nomear o especialista exato para CADA SINTOMA relatado. 2) Terminar perguntando se é a PRIMEIRA VEZ dele na clínica ou um retorno.",
+        "STATUS_CONSULTA": "Saber se é a primeira vez ou retorno. Terminar perguntando se o atendimento será PARTICULAR ou por PLANO DE SAÚDE.",
+        "FORMA_PAGAMENTO": f"Saber se é Particular ou Plano. Terminar pedindo para ele escolher UM destes horários: {vagas_txt}.",
+        "AGENDAMENTO": "Saber qual horário ele quer. Terminar pedindo o NOME COMPLETO.",
+        "DADOS_NOME": "Saber o nome. Terminar pedindo os 11 números do CPF.",
         "DADOS_CPF": "Coletar o CPF."
     }
 
     prompt_sistema = f"""Você é {NOME_ATENDENTE}, Concierge de Saúde da {NOME_CLINICA}.
-ESTADO DO FUNIL: {estado_atual}
-MISSÃO: {mapa_objetivos.get(estado_atual)}
+ESTADO ATUAL DO FUNIL: {estado_atual}
+O QUE VOCÊ DEVE FAZER AGORA: {mapa_objetivos.get(estado_atual)}
 
-🛡️ REGRAS DE AÇO (OBRIGATÓRIO):
-1. CITE OS MÉDICOS: Na Triagem, você está proibida de avançar sem escrever o nome dos especialistas indicados para as dores relatadas na sua resposta final.
-2. TOLERÂNCIA ZERO PARA LOOPS: Se o paciente der uma resposta curta, retorne true IMEDIATAMENTE.
-3. SEM SAUDAÇÕES: Não inicie a frase com "Olá".
+🛡️ REGRAS INFALÍVEIS (LEIA COM ATENÇÃO MÁXIMA):
+1. MAPA DE MÉDICOS: Garganta = Otorrinolaringologista | Olhos/Visão = Oftalmologista | Cabeça = Neurologista | Costas/Ossos/Articulações = Ortopedista | Estômago = Gastroenterologista | Pele = Dermatologista.
+2. PROCESSAMENTO MÚLTIPLO: Se o paciente falar 4 dores na mesma mensagem, você DEVE escrever na sua resposta o médico indicado para CADA UMA das 4 dores, sem ignorar nenhuma. Ex: "Para a cabeça é o Neuro, para a garganta é o Otorrino, etc."
+3. INTERRUPÇÃO DE SINTOMA: Se o paciente falar de uma DOR NOVA em QUALQUER etapa do funil (mesmo que você esteja perguntando de CPF), você deve PRIMEIRO responder qual é o médico daquela dor, e depois repetir a pergunta da sua missão atual.
+4. TOLERÂNCIA TOTAL: Ignore erros de digitação. Se ele falou de dor, retorne `forneceu_dado_correto: true` IMEDIATAMENTE.
+5. PROIBIDO: Clichês ("Entendo", "Olá").
 
 Retorne APENAS JSON:
 {{
-    "raciocinio_medico": "Liste internamente CADA dor relatada e o respectivo especialista. Se não for a etapa de triagem, deixe vazio.",
-    "forneceu_dado_correto": true ou false,
-    "resposta_concierge": "O texto final que será enviado ao paciente com os médicos citados e a pergunta da etapa atual.",
-    "dado_extraido": "O dado puro"
+    "forneceu_dado_correto": true,
+    "resposta_concierge": "O texto perfeito mapeando TODAS as dores citadas e puxando a pergunta da missão atual.",
+    "dado_extraido": "O dado importante da mensagem"
 }}"""
 
     payload = {
@@ -107,7 +108,7 @@ Retorne APENAS JSON:
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=12)
         return json.loads(res.json()['choices'][0]['message']['content'])
-    except: return {"forneceu_dado_correto": False, "resposta_concierge": "Poderia repetir?", "dado_extraido": mensagem_paciente}
+    except: return {"forneceu_dado_correto": True, "resposta_concierge": "Poderia repetir, por favor?", "dado_extraido": mensagem_paciente}
 
 # =========================
 # WEBHOOK PRINCIPAL
@@ -152,24 +153,22 @@ def webhook():
             enviar_whatsapp(telefone, f"Perfeito! Reserva para as {horario} confirmada. Pode informar os dados na recepção. Deseja marcar para mais alguém?")
             return "OK", 200
 
-        # --- ANÁLISE IA ---
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, sintoma, horario)
         dado_limpo = str(analise.get("dado_extraido") or msg_clean)
         resposta = analise.get("resposta_concierge", "Poderia ser um pouco mais claro?")
-        forneceu_correto = analise.get("forneceu_dado_correto")
+        forneceu_correto = analise.get("forneceu_dado_correto", True) # FORÇANDO TRUE GLOBALMENTE PARA NÃO TRAVAR
 
-        # --- BYPASS DE FORÇA BRUTA (PYTHON IGNORA A IA PARA NÃO TER LOOP) ---
+        # BYPASS RÁPIDO PARA NÃO DEPENDER DA IA EM RESPOSTAS CURTAS
         if estado == "STATUS_CONSULTA" and any(p in msg_lower for p in ["primeira", "1", "retorno", "ja fui", "já fui"]):
             forneceu_correto = True
-            dado_limpo = msg_clean
-            resposta = "Entendido. O atendimento será particular ou através de convênio/plano de saúde?"
+            if "primeira" in msg_lower or "1" in msg_lower: dado_limpo = "Primeira Vez"
+            else: dado_limpo = "Retorno"
             
         elif estado == "FORMA_PAGAMENTO" and any(p in msg_lower for p in ["particular", "plano", "convenio", "unimed"]):
             forneceu_correto = True
-            dado_limpo = msg_clean
-            resposta = f"Perfeito. Nossos horários disponíveis hoje são: {vagas_txt}. Qual deles funciona melhor para você?"
+            if "particular" in msg_lower: dado_limpo = "Particular"
+            else: dado_limpo = "Plano de Saúde"
 
-        # --- MUDANÇA DE ESTADO ---
         if forneceu_correto:
             if estado == "TRIAGEM":
                 sintoma = dado_limpo
@@ -187,13 +186,9 @@ def webhook():
                     if h_final:
                         horario = h_final
                         estado = "DADOS_NOME"
-                        resposta = f"Horário das {horario} reservado. Qual o nome completo do paciente?"
-                    else:
-                        resposta = f"Horário indisponível. Escolha entre: {vagas_txt}"
             elif estado == "DADOS_NOME":
                 nome = dado_limpo
                 estado = "DADOS_CPF"
-                resposta = f"Muito prazer. Para finalizar, digite os 11 números do CPF (ou avise se prefere dar na recepção)."
             elif estado == "DADOS_CPF":
                 cpf_limpo = re.sub(r'\D', '', dado_limpo)
                 if len(cpf_limpo) == 11:
@@ -202,6 +197,7 @@ def webhook():
                     cur.execute("UPDATE agenda SET disponivel=FALSE WHERE CAST(hora AS TEXT) LIKE %s", (f"{horario}%",))
                     resposta = f"Tudo pronto! Seu agendamento para as {horario} está confirmado. Deseja marcar para mais alguém?"
                 else:
+                    estado = "DADOS_CPF"
                     resposta = "Por favor, digite os 11 números do CPF."
 
         cur.execute("UPDATE sessoes SET estado=%s, nome=%s, cpf=%s, sintoma=%s, horario=%s, ultima_msg=%s WHERE telefone=%s", (estado, nome, cpf, sintoma, horario, msg_clean, telefone))
@@ -219,10 +215,10 @@ def reset():
     cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
     for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
     conn.commit(); conn.close()
-    return "✅ RESET V31 OK"
+    return "✅ RESET V32 OK"
 
 @app.route('/')
-def home(): return "🚀 V31 ATIVA - FORÇA BRUTA"
+def home(): return "🚀 V32 ATIVA - OMNIPRESENTE"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
