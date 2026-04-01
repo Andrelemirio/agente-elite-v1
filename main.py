@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V33 — AGENTE SÊNIOR DE ELITE
-# INTELIGÊNCIA LIVRE, EMPATIA CLÍNICA E CONTROLE TOTAL DA IA
+# 🚀 IMPÉRIO DE SILÍCIO V34 — AGENTE SÊNIOR (ANTI-AMNÉSIA)
+# FLUIDEZ PERFEITA, EMPATIA SEM REPETIÇÃO E TRAVA DE ESTADO
 # ============================================
 
 import os
@@ -9,7 +9,7 @@ import psycopg2
 import json
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V33 - AGENTE SÊNIOR ATIVO")
+print("🚀 IMPÉRIO DE SILÍCIO V34 - AGENTE SÊNIOR BLINDADO")
 
 app = Flask(__name__)
 
@@ -63,44 +63,44 @@ def enviar_whatsapp(telefone, mensagem):
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o SÊNIOR (CONTROLE TOTAL)
+# 🧠 CÉREBRO GPT-4o SÊNIOR (FOCO ABSOLUTO)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
-    prompt_sistema = f"""Você é {NOME_ATENDENTE}, uma Concierge Sênior e Especialista em Atendimento da clínica {NOME_CLINICA}. 
-Você é humana, acolhedora, inteligente e tem vasta experiência em direcionamento médico.
+    prompt_sistema = f"""Você é {NOME_ATENDENTE}, Concierge Sênior da clínica {NOME_CLINICA}. 
+Você é humana, elegante e muito eficiente.
 
-DADOS DO PACIENTE ATÉ AGORA: {dados_acumulados}
+DADOS DO PACIENTE: {dados_acumulados}
 ESTADO ATUAL DO FUNIL: {estado_atual}
 HORÁRIOS DISPONÍVEIS: {vagas_txt}
 
-SUA MISSÃO É CONDUZIR O PACIENTE PELO FUNIL ABAIXO, UMA ETAPA POR VEZ:
-1. TRIAGEM: Acolha o paciente com empatia. Se ele falar de dores, analise TODAS. Diga de forma natural e sênior qual o médico para cada dor (Garganta=Otorrino, Olho=Oftalmo, Cabeça=Neuro, Costas=Ortopedista, Pele=Dermatologista, etc). Só depois de explicar, pergunte se é a primeira vez dele na clínica.
-2. STATUS: Após saber se é a primeira vez, pergunte com educação se o atendimento será Particular ou por Plano de Saúde.
-3. PAGAMENTO: Após ele informar o pagamento, ofereça os horários disponíveis e peça para ele escolher um.
-4. AGENDAMENTO: Após ele escolher o horário, confirme e peça o Nome Completo.
-5. NOME: Após ele dar o nome, chame-o pelo nome e peça o CPF (informe que ele pode dar na recepção se preferir).
-6. CPF: Confirme o agendamento de forma acolhedora e encerre.
+FUNIL (AVANCE UMA ETAPA POR VEZ SE O PACIENTE RESPONDER):
+1. TRIAGEM: Identificar dores, citar especialistas e perguntar se é primeira vez.
+2. STATUS_CONSULTA: Perguntar se é Particular ou Plano.
+3. FORMA_PAGAMENTO: Oferecer os horários {vagas_txt} e pedir para escolher UM.
+4. AGENDAMENTO: Confirmar o horário e pedir o Nome.
+5. DADOS_NOME: Pedir o CPF (ou avisar que pode dar na recepção).
+6. DADOS_CPF: Confirmar o agendamento.
 
-REGRAS DE CONDUTA SÊNIOR:
-- ACOLHIMENTO: Nunca seja um robô frio. Demonstre cuidado com as dores relatadas ("Sinto muito que esteja com essas dores, vou te ajudar a resolver isso agora mesmo").
-- INTELIGÊNCIA: Se o paciente falar várias coisas ao mesmo tempo, processe tudo de uma vez.
-- FOCO: Sempre termine sua resposta com a pergunta que leva para a próxima etapa.
+🛡️ REGRAS ANTI-AMNÉSIA E ANTI-ROBÔ:
+- CUIDADO COM PERGUNTAS SOLTAS: Se o paciente fizer uma pergunta extra (ex: "atende outras pessoas?"), RESPONDA com educação, MAS MANTENHA O FOCO. Termine sua frase repetindo a pergunta da etapa que você está ({estado_atual}). NUNCA mude o `novo_estado` para trás.
+- EMPATIA NA MEDIDA: Só demonstre lamento ("sinto muito pela sua dor") UMA ÚNICA VEZ, na fase de TRIAGEM. Nas outras fases, seja apenas profissional e ágil. Não repita lamentos.
+- FOCO NO AVANÇO: Se o paciente respondeu o dado da etapa atual, avance o `novo_estado` para a próxima.
 
-Retorne APENAS um JSON válido estruturado assim:
+Retorne APENAS um JSON:
 {{
-    "resposta_para_paciente": "Sua resposta completa, empática e sênior",
-    "novo_estado": "Atualize o estado para a etapa que você está buscando AGORA (TRIAGEM, STATUS_CONSULTA, FORMA_PAGAMENTO, AGENDAMENTO, DADOS_NOME, DADOS_CPF, CONFIRMADO)",
-    "resumo_dados": "Atualize os dados que você já coletou do paciente"
+    "resposta_para_paciente": "Sua resposta sênior e focada",
+    "novo_estado": "O estado atual ou a PRÓXIMA etapa do funil",
+    "resumo_dados": "Atualize os dados coletados de forma resumida"
 }}"""
 
     payload = {
         "model": "gpt-4o",
         "messages": [{"role": "system", "content": prompt_sistema}, {"role": "user", "content": mensagem_paciente}],
         "response_format": {"type": "json_object"},
-        "temperature": 0.3 # Um pouco mais de criatividade para empatia
+        "temperature": 0.2
     }
 
     try:
@@ -158,10 +158,17 @@ def webhook():
         novo_estado = analise.get("novo_estado", estado)
         novos_dados = analise.get("resumo_dados", dados_acumulados)
 
-        # Atualiza a vaga se o estado for confirmado e tiver horário nos dados
-        if novo_estado == "CONFIRMADO":
+        # --- A TRAVA ANTI-AMNÉSIA (PYTHON BLOQUEIA RETROCESSO) ---
+        ordem_estados = {"TRIAGEM": 1, "STATUS_CONSULTA": 2, "FORMA_PAGAMENTO": 3, "AGENDAMENTO": 4, "DADOS_NOME": 5, "DADOS_CPF": 6, "CONFIRMADO": 7}
+        
+        # Se a IA tentar voltar para uma etapa anterior por burrice, o Python bloqueia
+        if ordem_estados.get(novo_estado, 0) < ordem_estados.get(estado, 0):
+            novo_estado = estado 
+
+        # Atualiza a vaga se o estado for confirmado
+        if novo_estado == "CONFIRMADO" and estado != "CONFIRMADO":
             for h in ["09:00", "11:00", "14:30", "16:00"]:
-                if h in novos_dados:
+                if h in novos_dados or h in msg_clean:
                     cur.execute("UPDATE agenda SET disponivel=FALSE WHERE CAST(hora AS TEXT) LIKE %s", (f"{h}%",))
                     break
 
@@ -180,10 +187,10 @@ def reset():
     cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
     for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
     conn.commit(); conn.close()
-    return "✅ RESET V33 OK - MODO SÊNIOR"
+    return "✅ RESET V34 OK - ANTI-AMNÉSIA"
 
 @app.route('/')
-def home(): return "🚀 V33 ATIVA - AGENTE SÊNIOR"
+def home(): return "🚀 V34 ATIVA - AGENTE SÊNIOR BLINDADO"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
