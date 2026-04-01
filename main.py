@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V36 — AGENTE SÊNIOR (CICLO CONTÍNUO)
-# MULTI-AGENDAMENTO LIBERADO E RESOLUÇÃO INTELIGENTE DE CPF
+# 🚀 IMPÉRIO DE SILÍCIO V38 — AGENTE SÊNIOR (A CARTADA FINAL)
+# INTERCEPTADOR DE HORÁRIO E BLINDAGEM TOTAL DE CONTEXTO
 # ============================================
 
 import os
@@ -10,7 +10,7 @@ import json
 import re
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V36 - CICLO CONTÍNUO ATIVO")
+print("🚀 IMPÉRIO DE SILÍCIO V38 - VERSÃO DEFINITIVA ATIVA")
 
 app = Flask(__name__)
 
@@ -64,7 +64,7 @@ def enviar_whatsapp(telefone, mensagem):
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o SÊNIOR (AGENDAMENTO MÚLTIPLO)
+# 🧠 CÉREBRO GPT-4o SÊNIOR
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados):
     url = "https://api.openai.com/v1/chat/completions"
@@ -76,24 +76,20 @@ DADOS DO PACIENTE: {dados_acumulados}
 ESTADO ATUAL DO FUNIL: {estado_atual}
 HORÁRIOS DISPONÍVEIS: {vagas_txt}
 
-FUNIL DE AGENDAMENTO:
-1. TRIAGEM: Analise TODAS as dores e cite o médico para CADA UMA (Garganta=Otorrino, Olho=Oftalmo, Cabeça=Neuro, Estômago/Barriga=Gastro, Dente=Dentista). Se houver mais de um, diga que vão agendar o primeiro agora e os outros em seguida. Termine perguntando se é Primeira Vez.
+FUNIL DE AGENDAMENTO (AVANCE UMA ETAPA POR VEZ):
+1. TRIAGEM: Analise TODAS as dores e cite o médico para CADA UMA (Garganta=Otorrino, Olho=Oftalmo, Cabeça=Neuro, Estômago/Barriga=Gastro, Dente=Dentista). Diga que agendará o primeiro agora e os outros em seguida. Termine perguntando se é Primeira Vez.
 2. STATUS_CONSULTA: Perguntar se é Particular ou Plano.
-3. FORMA_PAGAMENTO: Oferecer horários {vagas_txt}. ACEITE respostas curtas.
+3. FORMA_PAGAMENTO: Oferecer horários {vagas_txt}.
 4. AGENDAMENTO: Confirmar o horário e pedir o Nome.
 5. DADOS_NOME: Pedir o CPF (informe que pode dar na recepção/no dia da consulta).
-6. DADOS_CPF: Se o paciente der o CPF ou RECUSAR (disser "não", "no dia", "depois"), MUDE O ESTADO PARA 'CONFIRMADO' IMEDIATAMENTE e confirme a reserva.
-7. CONFIRMADO (CICLO CONTÍNUO): Se o paciente tiver outras dores pendentes (ex: ele marcou neuro, mas faltou o gastro), pergunte se ele quer agendar o próximo especialista agora. Se sim, MUDE O ESTADO PARA 'AGENDAMENTO' e ofereça os horários novamente.
-
-🚨 REGRAS EXTREMAS:
-- NUNCA INSISTA NO CPF: Se ele deu qualquer desculpa para não dar o CPF, aceite com educação e mude o novo_estado para CONFIRMADO.
-- PACIÊNCIA E FOCO: Se ele perguntar sobre como ganhar dinheiro na internet ou qualquer coisa fora da clínica, recuse educadamente e repita a pergunta da fase atual.
+6. DADOS_CPF: Confirmar a reserva.
+7. CONFIRMADO: Se o paciente cobrar as outras consultas, pergunte qual horário ele quer para o próximo especialista e mude o estado para AGENDAMENTO.
 
 Retorne APENAS um JSON:
 {{
-    "resposta_para_paciente": "Sua resposta sênior e elegante",
-    "novo_estado": "O estado atual, a PRÓXIMA etapa, ou AGENDAMENTO se for iniciar a marcação do 2º médico",
-    "resumo_dados": "Atualize os dados coletados de forma resumida (Ex: Neuro=09:00, Falta Gastro)"
+    "resposta_para_paciente": "Sua resposta sênior",
+    "novo_estado": "O estado atual, a PRÓXIMA etapa, ou AGENDAMENTO se for marcar o 2º médico",
+    "resumo_dados": "Atualize os dados coletados de forma resumida, SEMPRE MANTENDO AS DORES ANTERIORES NO TEXTO"
 }}"""
 
     payload = {
@@ -106,9 +102,7 @@ Retorne APENAS um JSON:
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=12)
         return json.loads(res.json()['choices'][0]['message']['content'])
-    except Exception as e: 
-        print("Erro IA:", e)
-        return None
+    except: return None
 
 # =========================
 # WEBHOOK PRINCIPAL
@@ -147,9 +141,8 @@ def webhook():
             enviar_whatsapp(telefone, "🚨 Identifiquei sinais de urgência. Por favor, não espere. Dirija-se imediatamente a um pronto atendimento ou ligue para o SAMU (192).")
             return "OK", 200
 
-        # --- O CÉREBRO ASSUME O CONTROLE ---
+        # --- ANÁLISE IA ---
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, dados_acumulados)
-        
         if not analise:
             enviar_whatsapp(telefone, "Tivemos uma pequena instabilidade no sistema. Poderia repetir, por favor?")
             return "OK", 200
@@ -158,17 +151,34 @@ def webhook():
         novo_estado = analise.get("novo_estado", estado)
         novos_dados = analise.get("resumo_dados", dados_acumulados)
 
-        # --- A TRAVA ANTI-AMNÉSIA INTELIGENTE ---
+        # --- INTERCEPTADORES DE FORÇA BRUTA (PYTHON NO COMANDO) ---
         ordem_estados = {"TRIAGEM": 1, "STATUS_CONSULTA": 2, "FORMA_PAGAMENTO": 3, "AGENDAMENTO": 4, "DADOS_NOME": 5, "DADOS_CPF": 6, "CONFIRMADO": 7}
         
-        # O pulo do gato: Só bloqueia o retrocesso se NÃO for o início de uma nova consulta
-        if ordem_estados.get(novo_estado, 0) < ordem_estados.get(estado, 0):
+        # 1. Bypass do Horário (Se digitar 9, 11, 14 ou 16, o Python rouba a cena e avança)
+        match_horario = re.search(r'\b(9|09|11|14|16)\b', msg_clean)
+        if estado == "FORMA_PAGAMENTO" and match_horario:
+            hora_formatada = match_horario.group(1).zfill(2) + ":00"
+            novo_estado = "AGENDAMENTO"
+            novos_dados = f"{dados_acumulados} | Horário escolhido: {hora_formatada}"
+            resposta = f"Perfeito! O horário das {hora_formatada} está reservado para você. Agora, por favor, poderia me informar o seu nome completo?"
+
+        # 2. Bypass do CPF (Se recusar, aprova e finaliza)
+        elif estado == "DADOS_CPF":
+            if any(p in msg_lower for p in ["não", "nao", "dia", "recepção", "recepcao", "depois", "lá"]):
+                novo_estado = "CONFIRMADO"
+                resposta = "Sem problemas, você pode informar o CPF no dia da consulta. O seu primeiro agendamento está 100% confirmado! Como conversamos sobre outras especialidades, você gostaria de agendar o próximo médico agora?"
+            elif len(re.sub(r'\D', '', msg_clean)) >= 11:
+                novo_estado = "CONFIRMADO"
+                resposta = "CPF recebido com sucesso! Seu primeiro agendamento está 100% confirmado. Como conversamos sobre outras especialidades, você gostaria de agendar o próximo médico agora?"
+
+        # 3. Impedir amnésia da IA de voltar fases
+        elif ordem_estados.get(novo_estado, 0) < ordem_estados.get(estado, 0):
             if estado == "CONFIRMADO" and novo_estado in ["AGENDAMENTO", "TRIAGEM", "FORMA_PAGAMENTO"]:
-                pass # Permite voltar para agendar o 2º médico
+                pass # Permite ciclo contínuo
             else:
                 novo_estado = estado 
 
-        # Atualiza a vaga se o estado for confirmado pela primeira vez neste ciclo
+        # --- ATUALIZAÇÃO DA AGENDA ---
         if novo_estado == "CONFIRMADO" and estado != "CONFIRMADO":
             for h in ["09:00", "11:00", "14:30", "16:00"]:
                 if h in novos_dados or h in msg_clean:
@@ -190,10 +200,10 @@ def reset():
     cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
     for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
     conn.commit(); conn.close()
-    return "✅ RESET V36 OK - CICLO CONTÍNUO"
+    return "✅ RESET V38 OK - DEFINITIVO"
 
 @app.route('/')
-def home(): return "🚀 V36 ATIVA - CICLO DE ELITE"
+def home(): return "🚀 V38 ATIVA - CÓDIGO DEFINITIVO"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
