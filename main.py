@@ -1,15 +1,16 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V34 — AGENTE SÊNIOR (ANTI-AMNÉSIA)
-# FLUIDEZ PERFEITA, EMPATIA SEM REPETIÇÃO E TRAVA DE ESTADO
+# 🚀 IMPÉRIO DE SILÍCIO V35 — AGENTE SÊNIOR (LOGÍSTICA DE ELITE)
+# TRATAMENTO DE MÚLTIPLAS CONSULTAS E FIM DO REINÍCIO
 # ============================================
 
 import os
 import requests
 import psycopg2
 import json
+import re
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V34 - AGENTE SÊNIOR BLINDADO")
+print("🚀 IMPÉRIO DE SILÍCIO V35 - LOGÍSTICA DE ELITE ATIVA")
 
 app = Flask(__name__)
 
@@ -63,35 +64,33 @@ def enviar_whatsapp(telefone, mensagem):
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o SÊNIOR (FOCO ABSOLUTO)
+# 🧠 CÉREBRO GPT-4o SÊNIOR (LOGÍSTICA MÚLTIPLA)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
-    prompt_sistema = f"""Você é {NOME_ATENDENTE}, Concierge Sênior da clínica {NOME_CLINICA}. 
-Você é humana, elegante e muito eficiente.
+    prompt_sistema = f"""Você é {NOME_ATENDENTE}, Concierge Sênior da clínica {NOME_CLINICA}.
 
 DADOS DO PACIENTE: {dados_acumulados}
 ESTADO ATUAL DO FUNIL: {estado_atual}
 HORÁRIOS DISPONÍVEIS: {vagas_txt}
 
-FUNIL (AVANCE UMA ETAPA POR VEZ SE O PACIENTE RESPONDER):
-1. TRIAGEM: Identificar dores, citar especialistas e perguntar se é primeira vez.
+FUNIL:
+1. TRIAGEM: Analise TODAS as dores e diga o médico para CADA UMA (Garganta=Otorrino, Olho=Oftalmo, Cabeça=Neuro, Barriga=Gastro). REGRA DE OURO: Se houver mais de um médico, explique IMEDIATAMENTE: "Como são especialistas diferentes, vamos agendar o primeiro agora e organizamos os próximos em seguida". Termine perguntando se é Primeira Vez.
 2. STATUS_CONSULTA: Perguntar se é Particular ou Plano.
-3. FORMA_PAGAMENTO: Oferecer os horários {vagas_txt} e pedir para escolher UM.
+3. FORMA_PAGAMENTO: Oferecer horários {vagas_txt}. ACEITE respostas curtas (ex: se ele disser "16", entenda como 16:00).
 4. AGENDAMENTO: Confirmar o horário e pedir o Nome.
 5. DADOS_NOME: Pedir o CPF (ou avisar que pode dar na recepção).
 6. DADOS_CPF: Confirmar o agendamento.
 
-🛡️ REGRAS ANTI-AMNÉSIA E ANTI-ROBÔ:
-- CUIDADO COM PERGUNTAS SOLTAS: Se o paciente fizer uma pergunta extra (ex: "atende outras pessoas?"), RESPONDA com educação, MAS MANTENHA O FOCO. Termine sua frase repetindo a pergunta da etapa que você está ({estado_atual}). NUNCA mude o `novo_estado` para trás.
-- EMPATIA NA MEDIDA: Só demonstre lamento ("sinto muito pela sua dor") UMA ÚNICA VEZ, na fase de TRIAGEM. Nas outras fases, seja apenas profissional e ágil. Não repita lamentos.
-- FOCO NO AVANÇO: Se o paciente respondeu o dado da etapa atual, avance o `novo_estado` para a próxima.
+🚨 REGRAS ANTI-COLAPSO (CUMPRIMENTO OBRIGATÓRIO):
+- DÚVIDAS DE MÚLTIPLAS CONSULTAS: Se o paciente perguntar como vai ser atendido por vários médicos, não entre em pânico. Responda com naturalidade que os agendamentos serão feitos em horários sequenciais ou dias diferentes, e REPITA A PERGUNTA DA SUA ETAPA ATUAL.
+- PROIBIDO REINICIAR: NUNCA volte a perguntar "é sua primeira vez?" se você já passou dessa fase. Nunca lamente a dor novamente. Mantenha a conversa avançando!
 
 Retorne APENAS um JSON:
 {{
-    "resposta_para_paciente": "Sua resposta sênior e focada",
+    "resposta_para_paciente": "Sua resposta sênior, resolvendo dúvidas e cobrando o dado da fase atual ({estado_atual})",
     "novo_estado": "O estado atual ou a PRÓXIMA etapa do funil",
     "resumo_dados": "Atualize os dados coletados de forma resumida"
 }}"""
@@ -158,12 +157,14 @@ def webhook():
         novo_estado = analise.get("novo_estado", estado)
         novos_dados = analise.get("resumo_dados", dados_acumulados)
 
-        # --- A TRAVA ANTI-AMNÉSIA (PYTHON BLOQUEIA RETROCESSO) ---
+        # --- A TRAVA ANTI-AMNÉSIA DE AÇO ---
         ordem_estados = {"TRIAGEM": 1, "STATUS_CONSULTA": 2, "FORMA_PAGAMENTO": 3, "AGENDAMENTO": 4, "DADOS_NOME": 5, "DADOS_CPF": 6, "CONFIRMADO": 7}
-        
-        # Se a IA tentar voltar para uma etapa anterior por burrice, o Python bloqueia
         if ordem_estados.get(novo_estado, 0) < ordem_estados.get(estado, 0):
             novo_estado = estado 
+
+        # Auto-correção para resposta curta de horário
+        if estado == "FORMA_PAGAMENTO" and re.search(r'\b(9|11|14|16)\b', msg_clean):
+            novo_estado = "AGENDAMENTO"
 
         # Atualiza a vaga se o estado for confirmado
         if novo_estado == "CONFIRMADO" and estado != "CONFIRMADO":
@@ -187,10 +188,10 @@ def reset():
     cur.execute("DELETE FROM agenda; DELETE FROM sessoes;")
     for h in ["09:00", "11:00", "14:30", "16:00"]: cur.execute("INSERT INTO agenda (hora) VALUES (%s)", (h,))
     conn.commit(); conn.close()
-    return "✅ RESET V34 OK - ANTI-AMNÉSIA"
+    return "✅ RESET V35 OK - LOGÍSTICA DE ELITE"
 
 @app.route('/')
-def home(): return "🚀 V34 ATIVA - AGENTE SÊNIOR BLINDADO"
+def home(): return "🚀 V35 ATIVA - LOGÍSTICA SÊNIOR"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
