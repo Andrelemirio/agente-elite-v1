@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V39 — ODONTO SILÍCIO (CONCIERGE DE ELITE)
-# LÓGICA DE ENCERRAMENTO E FECHAMENTO DE LOOP
+# 🚀 IMPÉRIO DE SILÍCIO V40 — ODONTO SILÍCIO (AGENTE DE ELITE COM S.I.T)
+# LÓGICA DE ENCERRAMENTO, BLINDAGEM DE FUGA E DELAY ANTI-BAN
 # ============================================
 
 import os
@@ -8,9 +8,11 @@ import requests
 import psycopg2
 import json
 import re
+import time
+import random
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V39 - ODONTO SILÍCIO ATIVA E BLINDADA")
+print("🚀 IMPÉRIO DE SILÍCIO V40 - AGENTE DE ELITE ATIVADO E BLINDADO")
 
 app = Flask(__name__)
 
@@ -41,7 +43,7 @@ def init_db():
         conn = conectar(); cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sessoes (
-                telefone TEXT PRIMARY KEY, estado TEXT, nome TEXT, 
+                telefone TEXT PRIMARY KEY, estado TEXT, nome TEXT,
                 cpf TEXT, sintoma TEXT, horario TEXT, ultima_msg TEXT
             )
         """)
@@ -57,49 +59,60 @@ def init_db():
 
 init_db()
 
+# --- TRAVA 1: DELAY ANTI-BAN E STATUS "DIGITANDO..." ---
 def enviar_whatsapp(telefone, mensagem):
     try:
+        # 1. Envia o status de "Digitando..." para o WhatsApp
+        url_presence = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-presence"
+        requests.post(url_presence, headers={"Client-Token": ZAPI_CLIENT_TOKEN}, json={"phone": telefone, "presence": "composing"}, timeout=5)
+        
+        # 2. Delay estratégico (Respira de 2 a 4 segundos)
+        time.sleep(random.randint(2, 4))
+        
+        # 3. Envia a mensagem real
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
         requests.post(url, headers={"Client-Token": ZAPI_CLIENT_TOKEN}, json={"phone": telefone, "message": mensagem}, timeout=10)
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o SÊNIOR ODONTOLÓGICO CONDICIONAL
+# 🧠 CÉREBRO GPT-4o SÊNIOR (COM SIT E BLINDAGEM)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
+    # --- TRAVA 2: LÓGICA DE FECHAMENTO (Sempre termina com pergunta) ---
     instrucoes = {
-        "TRIAGEM": "AÇÃO: Identifique o procedimento desejado. Diga que agendará uma avaliação e pergunte se é PRIMEIRA VEZ. (novo_estado: STATUS_CONSULTA)",
-        "STATUS_CONSULTA": "AÇÃO: Agradeça. Pergunte se a consulta será PARTICULAR ou pelo PLANO de saúde. (novo_estado: FORMA_PAGAMENTO)",
-        "FORMA_PAGAMENTO": f"AÇÃO: Ofereça APENAS os horários {vagas_txt} e peça para escolher. (novo_estado: AGENDAMENTO)",
-        "AGENDAMENTO": f"AÇÃO: SE o paciente escolheu um horário, confirme e peça o NOME COMPLETO (novo_estado: DADOS_NOME). SE não escolheu, ofereça os horários novamente (novo_estado: AGENDAMENTO).",
-        "DADOS_NOME": "AÇÃO: SE o paciente forneceu o nome, peça o CPF para cadastro avisando que pode ser dado na recepção (novo_estado: DADOS_CPF). SE não, continue pedindo o nome (novo_estado: DADOS_NOME).",
-        "DADOS_CPF": "AÇÃO: Confirme que o horário está reservado. (novo_estado: CONFIRMADO)",
-        "CONFIRMADO": "AÇÃO: Pergunte se há mais alguém para agendar ou alguma dúvida. SE o paciente disser NÃO, OBRIGADO, OK, TUDO CERTO ou se despedir, NÃO FAÇA MAIS PERGUNTAS, apenas despeça-se educadamente. (novo_estado: ENCERRADO se ele não quiser mais nada. Mantenha CONFIRMADO se ele quiser agendar outra pessoa).",
-        "ENCERRADO": "AÇÃO: O atendimento acabou. Apenas seja educado, não faça perguntas e não puxe assunto. (novo_estado: ENCERRADO)"
+        "TRIAGEM": "AÇÃO: Identifique o procedimento. Diga que agendará uma avaliação. FECHAMENTO: Pergunte se é PRIMEIRA VEZ na clínica. (novo_estado: STATUS_CONSULTA)",
+        "STATUS_CONSULTA": "AÇÃO: Agradeça. FECHAMENTO: Pergunte se a consulta será PARTICULAR ou pelo PLANO de saúde. (novo_estado: FORMA_PAGAMENTO)",
+        "FORMA_PAGAMENTO": f"AÇÃO: Ofereça APENAS os horários {vagas_txt}. FECHAMENTO: Pergunte 'Qual desses horários fica melhor para você?' (novo_estado: AGENDAMENTO)",
+        "AGENDAMENTO": f"AÇÃO: SE o paciente escolheu um horário, confirme. FECHAMENTO: Peça o NOME COMPLETO (novo_estado: DADOS_NOME). SE não escolheu, ofereça os horários novamente (novo_estado: AGENDAMENTO).",
+        "DADOS_NOME": "AÇÃO: SE o paciente forneceu o nome, avise que o resto dos dados pode ser dado na recepção. FECHAMENTO: Peça o CPF para o cadastro base (novo_estado: DADOS_CPF). SE não, continue pedindo o nome (novo_estado: DADOS_NOME).",
+        "DADOS_CPF": "AÇÃO: Confirme que o horário está reservado. FECHAMENTO: Pergunte se há mais alguém para agendar ou se ficou alguma dúvida. (novo_estado: CONFIRMADO)",
+        "CONFIRMADO": "AÇÃO: SE o paciente disser NÃO, OBRIGADO, ou se despedir, encerre sem perguntas (novo_estado: ENCERRADO).",
+        "ENCERRADO": "AÇÃO: O atendimento acabou. Apenas seja educado, NÃO faça perguntas, NÃO puxe assunto. (novo_estado: ENCERRADO)"
     }
     
-    instrucao_atual = instrucoes.get(estado_atual, "AÇÃO: Continue o atendimento com empatia.")
+    instrucao_atual = instrucoes.get(estado_atual, "AÇÃO: Conduza para o agendamento.")
 
-    prompt_sistema = f"""Você é {NOME_ATENDENTE}, a Concierge de elite da clínica {NOME_CLINICA}.
+    # --- TRAVA 3: BLINDAGEM DE FUGA (O Escudo) ---
+    prompt_sistema = f"""Você é {NOME_ATENDENTE}, a Concierge de Elite da clínica {NOME_CLINICA}.
 
 DADOS DO PACIENTE: {dados_acumulados}
 ESTADO ATUAL DO SISTEMA: {estado_atual}
 HORÁRIOS DISPONÍVEIS: {vagas_txt}
 
-REGRAS DE OURO:
-1. NUNCA avance o atendimento se o paciente fizer uma pergunta alheia. Responda a pergunta e repita a exigência da etapa atual.
-2. Se perguntarem de remédios ou diagnósticos, diga que apenas o dentista pode avaliar e orientar.
-3. Se o estado for ENCERRADO, encerre o papo com elegância e SEM fazer perguntas.
+REGRAS DE OURO DA BLINDAGEM (OBRIGATÓRIO):
+1. CONTROLE DE FLUXO: NUNCA mande uma mensagem sem uma pergunta no final, exceto no estado ENCERRADO. Você lidera a conversa.
+2. FUGA DE ASSUNTO: Se o paciente falar sobre política, esportes, clima, culinária ou qualquer coisa fora da odontologia, CORTE IMEDIATAMENTE e educadamente. Exemplo: "Compreendo, mas meu foco exclusivo aqui é o seu atendimento odontológico. [Repete a pergunta atual]".
+3. LIMITES: Se pedirem diagnósticos ou remédios, diga que apenas o dentista pode orientar isso na avaliação presencial.
 
 SUA MISSÃO EXATA AGORA:
 {instrucao_atual}
 
 Retorne APENAS um JSON:
 {{
-    "resposta_para_paciente": "Sua resposta natural",
+    "resposta_para_paciente": "Sua resposta natural e persuasiva",
     "novo_estado": "O estado exato após sua análise",
     "resumo_dados": "Mantenha o histórico atualizado"
 }}"""
@@ -140,7 +153,7 @@ def webhook():
             conn.commit()
             enviar_whatsapp(telefone, f"Olá! Seja muito bem-vindo(a) à {NOME_CLINICA}. Meu nome é {NOME_ATENDENTE} e sou a sua concierge digital. Como posso ajudar a cuidar do seu sorriso hoje?")
             return "OK", 200
-        else: 
+        else:
             estado, dados_acumulados, ultima_msg = row
 
         if msg_clean == ultima_msg: return "OK", 200
@@ -156,7 +169,7 @@ def webhook():
         # --- ANÁLISE IA ---
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, dados_acumulados)
         if not analise:
-            enviar_whatsapp(telefone, "Tivemos uma instabilidade no sistema. Poderia repetir?")
+            enviar_whatsapp(telefone, "Tivemos uma pequena instabilidade de rede. Você poderia repetir sua última mensagem, por favor?")
             return "OK", 200
 
         resposta = analise.get("resposta_para_paciente", "Pode me explicar melhor?")
@@ -175,18 +188,18 @@ def webhook():
 
         if novo_estado == "DADOS_NOME" and estado == "AGENDAMENTO":
             if not any(h in novos_dados or h in msg_clean for h in ["09", "11", "14", "16", "9"]):
-                novo_estado = "AGENDAMENTO" 
+                novo_estado = "AGENDAMENTO"
 
         elif estado == "DADOS_CPF":
             if len(re.sub(r'\D', '', msg_clean)) >= 11:
                 novo_estado = "CONFIRMADO"
-                resposta = "CPF recebido com sucesso! Seu agendamento está confirmado. Há mais alguém da família que deseja agendar ou alguma dúvida?"
+                resposta = "CPF recebido com sucesso! Seu agendamento está confirmado. Há mais alguém da família que deseja agendar ou ficou alguma dúvida?"
 
         elif ordem_estados.get(novo_estado, 0) < ordem_estados.get(estado, 0):
             if estado == "CONFIRMADO" and novo_estado in ["AGENDAMENTO", "TRIAGEM", "FORMA_PAGAMENTO"]:
-                pass 
+                pass
             else:
-                novo_estado = estado 
+                novo_estado = estado
 
         # --- ATUALIZAÇÃO DA AGENDA ---
         if (novo_estado == "CONFIRMADO" or novo_estado == "ENCERRADO") and estado != "CONFIRMADO" and estado != "ENCERRADO":
@@ -214,7 +227,7 @@ def reset():
     return "✅ RESET ODONTO SILÍCIO OK"
 
 @app.route('/')
-def home(): return "🚀 ODONTO SILÍCIO ATIVA"
+def home(): return "🚀 ODONTO SILÍCIO V40 ATIVA"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
