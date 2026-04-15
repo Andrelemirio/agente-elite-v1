@@ -158,6 +158,14 @@ def webhook():
 
         if msg_clean == ultima_msg: return "OK", 200
 
+        # --- TRAVA DE SILÊNCIO (FIM DO LOOP DE EDUCAÇÃO) ---
+        if estado == "ENCERRADO":
+            encerramentos = ["ok", "obrigado", "obrigada", "valeu", "tchau", "ótimo", "perfeito", "joia", "beleza"]
+            if any(p in msg_lower for p in encerramentos) or len(msg_clean) <= 10:
+                cur.execute("UPDATE sessoes SET ultima_msg=%s WHERE telefone=%s", (msg_clean, telefone))
+                conn.commit()
+                return "OK", 200
+
         cur.execute("SELECT hora FROM agenda WHERE disponivel=TRUE ORDER BY hora LIMIT 4")
         vagas_txt = ", ".join([v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5] for v in cur.fetchall()])
 
