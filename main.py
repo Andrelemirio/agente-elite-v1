@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V40 — ODONTO SILÍCIO (AGENTE DE ELITE COM S.I.T)
-# LÓGICA DE ENCERRAMENTO, BLINDAGEM DE FUGA E DELAY ANTI-BAN
+# 🚀 IMPÉRIO DE SILÍCIO V41 — ODONTO SILÍCIO (AGENTE DE ELITE)
+# LÓGICA DE ENCERRAMENTO, BLINDAGEM E AGORA COM VISÃO (IMAGENS)
 # ============================================
 
 import os
@@ -12,7 +12,7 @@ import time
 import random
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V40 - AGENTE DE ELITE ATIVADO E BLINDADO")
+print("🚀 IMPÉRIO DE SILÍCIO V41 - AGENTE DE ELITE COM VISÃO ATIVADA")
 
 app = Flask(__name__)
 
@@ -62,26 +62,22 @@ init_db()
 # --- TRAVA 1: DELAY ANTI-BAN E STATUS "DIGITANDO..." ---
 def enviar_whatsapp(telefone, mensagem):
     try:
-        # 1. Envia o status de "Digitando..." para o WhatsApp
         url_presence = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-presence"
         requests.post(url_presence, headers={"Client-Token": ZAPI_CLIENT_TOKEN}, json={"phone": telefone, "presence": "composing"}, timeout=5)
         
-        # 2. Delay estratégico (Respira de 2 a 4 segundos)
         time.sleep(random.randint(2, 4))
         
-        # 3. Envia a mensagem real
         url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
         requests.post(url, headers={"Client-Token": ZAPI_CLIENT_TOKEN}, json={"phone": telefone, "message": mensagem}, timeout=10)
     except Exception as e: print("Erro WhatsApp:", e)
 
 # =========================
-# 🧠 CÉREBRO GPT-4o SÊNIOR (COM SIT E BLINDAGEM)
+# 🧠 CÉREBRO GPT-4o SÊNIOR (COM SIT, BLINDAGEM E VISÃO)
 # =========================
-def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados):
+def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados, media_url=None):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
     
-    # --- TRAVA 2: LÓGICA DE FECHAMENTO (Sempre termina com pergunta) ---
     instrucoes = {
         "TRIAGEM": "AÇÃO: Identifique o procedimento. Diga que agendará uma avaliação. FECHAMENTO: Pergunte se é PRIMEIRA VEZ na clínica. (novo_estado: STATUS_CONSULTA)",
         "STATUS_CONSULTA": "AÇÃO: Agradeça. FECHAMENTO: Pergunte se a consulta será PARTICULAR ou pelo PLANO de saúde. (novo_estado: FORMA_PAGAMENTO)",
@@ -95,7 +91,6 @@ def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados
     
     instrucao_atual = instrucoes.get(estado_atual, "AÇÃO: Conduza para o agendamento.")
 
-    # --- TRAVA 3: BLINDAGEM DE FUGA (O Escudo) ---
     prompt_sistema = f"""Você é {NOME_ATENDENTE}, a Concierge de Elite da clínica {NOME_CLINICA}.
 
 DADOS DO PACIENTE: {dados_acumulados}
@@ -104,8 +99,8 @@ HORÁRIOS DISPONÍVEIS: {vagas_txt}
 
 REGRAS DE OURO DA BLINDAGEM (OBRIGATÓRIO):
 1. CONTROLE DE FLUXO: NUNCA mande uma mensagem sem uma pergunta no final, exceto no estado ENCERRADO. Você lidera a conversa.
-2. FUGA DE ASSUNTO: Se o paciente falar sobre política, esportes, clima, culinária ou qualquer coisa fora da odontologia, CORTE IMEDIATAMENTE e educadamente. Exemplo: "Compreendo, mas meu foco exclusivo aqui é o seu atendimento odontológico. [Repete a pergunta atual]".
-3. LIMITES: Se pedirem diagnósticos ou remédios, diga que apenas o dentista pode orientar isso na avaliação presencial.
+2. FUGA DE ASSUNTO: Se o paciente falar sobre política, esportes, clima, culinária ou qualquer coisa fora da odontologia, CORTE IMEDIATAMENTE e educadamente.
+3. LIMITES MÉDICOS E VISUAIS: Se o paciente enviar uma IMAGEM (foto de dente, raio-x), diga o que você está vendo de forma empática, mas alerte que "apenas o dentista pode dar um diagnóstico final na avaliação presencial".
 
 SUA MISSÃO EXATA AGORA:
 {instrucao_atual}
@@ -117,15 +112,24 @@ Retorne APENAS um JSON:
     "resumo_dados": "Mantenha o histórico atualizado"
 }}"""
 
+    # --- PREPARAÇÃO DO PACOTE DE DADOS (TEXTO OU TEXTO+IMAGEM) ---
+    if media_url:
+        conteudo_usuario = [
+            {"type": "text", "text": mensagem_paciente},
+            {"type": "image_url", "image_url": {"url": media_url}}
+        ]
+    else:
+        conteudo_usuario = mensagem_paciente
+
     payload = {
         "model": "gpt-4o",
-        "messages": [{"role": "system", "content": prompt_sistema}, {"role": "user", "content": mensagem_paciente}],
+        "messages": [{"role": "system", "content": prompt_sistema}, {"role": "user", "content": conteudo_usuario}],
         "response_format": {"type": "json_object"},
         "temperature": 0.2
     }
 
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=12)
+        res = requests.post(url, headers=headers, json=payload, timeout=15) # Aumentei timeout para 15s devido a leitura da imagem
         return json.loads(res.json()['choices'][0]['message']['content'])
     except: return None
 
@@ -138,10 +142,20 @@ def webhook():
     try:
         data = request.get_json(force=True)
         if not data or data.get("fromMe"): return "OK", 200
+        
         telefone = data.get("phone", "").split("@")[0]
-        msg = data.get("text", {}).get("message", "") if isinstance(data.get("text"), dict) else str(data.get("message", ""))
-        if not telefone or not msg: return "OK", 200
+        
+        # --- VERIFICA SE É MENSAGEM DE TEXTO OU IMAGEM ---
+        media_url = None
+        if "image" in data and "imageUrl" in data["image"]:
+            media_url = data["image"]["imageUrl"]
+            msg = "📸 [O paciente enviou a imagem anexa. Analise a imagem e conecte com o atendimento]."
+        else:
+            msg = data.get("text", {}).get("message", "") if isinstance(data.get("text"), dict) else str(data.get("message", ""))
+        
         msg_clean, msg_lower = msg.strip(), msg.strip().lower()
+
+        if not telefone or (not msg_clean and not media_url): return "OK", 200
 
         conn = conectar(); cur = conn.cursor()
         cur.execute("SELECT estado, sintoma, ultima_msg FROM sessoes WHERE telefone=%s", (telefone,))
@@ -156,9 +170,8 @@ def webhook():
         else:
             estado, dados_acumulados, ultima_msg = row
 
-        if msg_clean == ultima_msg: return "OK", 200
+        if msg_clean == ultima_msg and not media_url: return "OK", 200
 
-        # --- TRAVA DE SILÊNCIO (FIM DO LOOP DE EDUCAÇÃO) ---
         if estado == "ENCERRADO":
             encerramentos = ["ok", "obrigado", "obrigada", "valeu", "tchau", "ótimo", "perfeito", "joia", "beleza"]
             if any(p in msg_lower for p in encerramentos) or len(msg_clean) <= 10:
@@ -170,12 +183,12 @@ def webhook():
         vagas_txt = ", ".join([v[0].strftime('%H:%M') if hasattr(v[0], 'strftime') else str(v[0])[:5] for v in cur.fetchall()])
 
         emergencias = ["dor insuportável", "sangramento forte", "socorro", "dor extrema"]
-        if any(p in msg_lower for p in emergencias):
+        if any(p in msg_lower for p in emergencias) and not media_url:
             enviar_whatsapp(telefone, "🚨 Identifiquei sinais de urgência. Para casos de dor extrema ou sangramento forte, dirija-se imediatamente a um pronto atendimento odontológico.")
             return "OK", 200
 
-        # --- ANÁLISE IA ---
-        analise = analisar_com_ia(msg_clean, estado, vagas_txt, dados_acumulados)
+        # --- ANÁLISE IA (AGORA COM CAPACIDADE DE VER A IMAGEM) ---
+        analise = analisar_com_ia(msg_clean, estado, vagas_txt, dados_acumulados, media_url)
         if not analise:
             enviar_whatsapp(telefone, "Tivemos uma pequena instabilidade de rede. Você poderia repetir sua última mensagem, por favor?")
             return "OK", 200
@@ -184,11 +197,10 @@ def webhook():
         novo_estado = analise.get("novo_estado", estado)
         novos_dados = analise.get("resumo_dados", dados_acumulados)
 
-        # --- INTERCEPTADORES DE SEGURANÇA MÁXIMA ---
         ordem_estados = {"TRIAGEM": 1, "STATUS_CONSULTA": 2, "FORMA_PAGAMENTO": 3, "AGENDAMENTO": 4, "DADOS_NOME": 5, "DADOS_CPF": 6, "CONFIRMADO": 7, "ENCERRADO": 8}
         
         match_horario = re.search(r'\b(9|09|11|14|16)\b', msg_clean)
-        if estado in ["FORMA_PAGAMENTO", "AGENDAMENTO"] and match_horario:
+        if estado in ["FORMA_PAGAMENTO", "AGENDAMENTO"] and match_horario and not media_url:
             hora_formatada = match_horario.group(1).zfill(2) + ":00"
             novo_estado = "DADOS_NOME"
             novos_dados = f"{dados_acumulados} | Horário: {hora_formatada}"
@@ -198,7 +210,7 @@ def webhook():
             if not any(h in novos_dados or h in msg_clean for h in ["09", "11", "14", "16", "9"]):
                 novo_estado = "AGENDAMENTO"
 
-        elif estado == "DADOS_CPF":
+        elif estado == "DADOS_CPF" and not media_url:
             if len(re.sub(r'\D', '', msg_clean)) >= 11:
                 novo_estado = "CONFIRMADO"
                 resposta = "CPF recebido com sucesso! Seu agendamento está confirmado. Há mais alguém da família que deseja agendar ou ficou alguma dúvida?"
@@ -209,7 +221,6 @@ def webhook():
             else:
                 novo_estado = estado
 
-        # --- ATUALIZAÇÃO DA AGENDA ---
         if (novo_estado == "CONFIRMADO" or novo_estado == "ENCERRADO") and estado != "CONFIRMADO" and estado != "ENCERRADO":
             if not any(p in msg_lower for p in ["cancelar", "desisto", "outra"]):
                 for h in ["09:00", "11:00", "14:30", "16:00"]:
@@ -235,7 +246,7 @@ def reset():
     return "✅ RESET ODONTO SILÍCIO OK"
 
 @app.route('/')
-def home(): return "🚀 ODONTO SILÍCIO V40 ATIVA"
+def home(): return "🚀 ODONTO SILÍCIO V41 ATIVA (AGORA COM VISÃO)"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
