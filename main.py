@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V41 — ODONTO SILÍCIO (AGENTE DE ELITE)
-# LÓGICA DE ENCERRAMENTO, BLINDAGEM E AGORA COM VISÃO (IMAGENS)
+# 🚀 IMPÉRIO DE SILÍCIO V42 — ODONTO SILÍCIO (AGENTE DE ELITE)
+# VISÃO, AUDIÇÃO (WHISPER), BLINDAGEM E CORREÇÃO DE ALUCINAÇÃO
 # ============================================
 
 import os
@@ -12,7 +12,7 @@ import time
 import random
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V41 - AGENTE DE ELITE COM VISÃO ATIVADA")
+print("🚀 IMPÉRIO DE SILÍCIO V42 - AGENTE DE ELITE MULTIMODAL (OLHOS E OUVIDOS)")
 
 app = Flask(__name__)
 
@@ -71,8 +71,42 @@ def enviar_whatsapp(telefone, mensagem):
         requests.post(url, headers={"Client-Token": ZAPI_CLIENT_TOKEN}, json={"phone": telefone, "message": mensagem}, timeout=10)
     except Exception as e: print("Erro WhatsApp:", e)
 
+# --- MÓDULO DE AUDIÇÃO: INTEGRAÇÃO WHISPER ---
+def transcrever_audio(audio_url):
+    try:
+        # 1. Baixar o áudio da Z-API
+        resposta_audio = requests.get(audio_url, timeout=15)
+        if resposta_audio.status_code != 200: return None
+        
+        # 2. Salvar arquivo temporário no servidor
+        caminho_temp = f"/tmp/audio_paciente_{random.randint(1000,9999)}.ogg"
+        with open(caminho_temp, 'wb') as f:
+            f.write(resposta_audio.content)
+        
+        # 3. Enviar para a OpenAI (Whisper)
+        url_whisper = "https://api.openai.com/v1/audio/transcriptions"
+        headers_whisper = {"Authorization": f"Bearer {OPENAI_KEY}"}
+        
+        with open(caminho_temp, 'rb') as arquivo_audio:
+            files = {
+                "file": ("audio.ogg", arquivo_audio, "audio/ogg"),
+                "model": (None, "whisper-1"),
+                "language": (None, "pt")
+            }
+            res_whisper = requests.post(url_whisper, headers=headers_whisper, files=files, timeout=20)
+        
+        # 4. Limpar o servidor
+        if os.path.exists(caminho_temp): os.remove(caminho_temp)
+            
+        if res_whisper.status_code == 200:
+            return res_whisper.json().get("text", "")
+        return None
+    except Exception as e:
+        print("Erro no Whisper:", e)
+        return None
+
 # =========================
-# 🧠 CÉREBRO GPT-4o SÊNIOR (COM SIT, BLINDAGEM E VISÃO)
+# 🧠 CÉREBRO GPT-4o SÊNIOR (VISÃO E AUDIÇÃO)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados, media_url=None):
     url = "https://api.openai.com/v1/chat/completions"
@@ -100,9 +134,9 @@ HORÁRIOS DISPONÍVEIS: {vagas_txt}
 REGRAS DE OURO DA BLINDAGEM (OBRIGATÓRIO):
 1. CONTROLE DE FLUXO: NUNCA mande uma mensagem sem uma pergunta no final, exceto no estado ENCERRADO. Você lidera a conversa.
 2. FUGA DE ASSUNTO: Se o paciente falar sobre política, esportes, clima, culinária ou qualquer coisa fora da odontologia, CORTE IMEDIATAMENTE e educadamente.
-3. LIMITES MÉDICOS E VISUAIS: Se o paciente enviar uma IMAGEM (foto de dente, raio-x), diga o que você está vendo de forma empática, mas alerte que "apenas o dentista pode dar um diagnóstico final na avaliação presencial".
-4.FIDELIDADE DE DADOS: NUNCA altere ou questione um horario de que esteja definidonos "DADOS D PACIENTE"a menos que o paciente peça explicitamente para agendar.
-Confie no historico.
+3. LIMITES MÉDICOS E VISUAIS: Se o paciente enviar uma IMAGEM, diga o que você está vendo de forma empática, mas alerte que "apenas o dentista pode dar um diagnóstico final na avaliação presencial".
+4. FIDELIDADE DE DADOS: NUNCA altere ou questione um horário que já esteja definido nos "DADOS DO PACIENTE" a menos que o cliente peça explicitamente para reagendar. Confie no histórico.
+
 SUA MISSÃO EXATA AGORA:
 {instrucao_atual}
 
@@ -113,7 +147,6 @@ Retorne APENAS um JSON:
     "resumo_dados": "Mantenha o histórico atualizado"
 }}"""
 
-    # --- PREPARAÇÃO DO PACOTE DE DADOS (TEXTO OU TEXTO+IMAGEM) ---
     if media_url:
         conteudo_usuario = [
             {"type": "text", "text": mensagem_paciente},
@@ -130,7 +163,7 @@ Retorne APENAS um JSON:
     }
 
     try:
-        res = requests.post(url, headers=headers, json=payload, timeout=15) # Aumentei timeout para 15s devido a leitura da imagem
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
         return json.loads(res.json()['choices'][0]['message']['content'])
     except: return None
 
@@ -146,9 +179,16 @@ def webhook():
         
         telefone = data.get("phone", "").split("@")[0]
         
-        # --- VERIFICA SE É MENSAGEM DE TEXTO OU IMAGEM ---
+        # --- VERIFICA SE É ÁUDIO, IMAGEM OU TEXTO ---
         media_url = None
-        if "image" in data and "imageUrl" in data["image"]:
+        if "audio" in data and "audioUrl" in data["audio"]:
+            audio_url = data["audio"]["audioUrl"]
+            transcricao = transcrever_audio(audio_url)
+            if transcricao:
+                msg = f"🎤 [ÁUDIO DO PACIENTE TRANSCRITO]: {transcricao}"
+            else:
+                msg = "🎤 [Áudio recebido, mas falhou a transcrição. Peça educadamente para o paciente digitar.]"
+        elif "image" in data and "imageUrl" in data["image"]:
             media_url = data["image"]["imageUrl"]
             msg = "📸 [O paciente enviou a imagem anexa. Analise a imagem e conecte com o atendimento]."
         else:
@@ -171,7 +211,7 @@ def webhook():
         else:
             estado, dados_acumulados, ultima_msg = row
 
-        if msg_clean == ultima_msg and not media_url: return "OK", 200
+        if msg_clean == ultima_msg and not media_url and "audio" not in data: return "OK", 200
 
         if estado == "ENCERRADO":
             encerramentos = ["ok", "obrigado", "obrigada", "valeu", "tchau", "ótimo", "perfeito", "joia", "beleza"]
@@ -188,7 +228,7 @@ def webhook():
             enviar_whatsapp(telefone, "🚨 Identifiquei sinais de urgência. Para casos de dor extrema ou sangramento forte, dirija-se imediatamente a um pronto atendimento odontológico.")
             return "OK", 200
 
-        # --- ANÁLISE IA (AGORA COM CAPACIDADE DE VER A IMAGEM) ---
+        # --- ANÁLISE IA ---
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, dados_acumulados, media_url)
         if not analise:
             enviar_whatsapp(telefone, "Tivemos uma pequena instabilidade de rede. Você poderia repetir sua última mensagem, por favor?")
@@ -247,7 +287,7 @@ def reset():
     return "✅ RESET ODONTO SILÍCIO OK"
 
 @app.route('/')
-def home(): return "🚀 ODONTO SILÍCIO V41 ATIVA (AGORA COM VISÃO)"
+def home(): return "🚀 ODONTO SILÍCIO V42 ATIVA (VISÃO E AUDIÇÃO)"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
