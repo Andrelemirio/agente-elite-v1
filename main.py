@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V42 — ODONTO SILÍCIO (AGENTE DE ELITE)
-# VISÃO, AUDIÇÃO (WHISPER), BLINDAGEM E CORREÇÃO DE ALUCINAÇÃO
+# 🚀 IMPÉRIO DE SILÍCIO V43 — ODONTO SILÍCIO (AGENTE DE ELITE)
+# VISÃO, WHISPER E TRAVA DE ASSINCRONISMO (ANTI-DUPLICAÇÃO)
 # ============================================
 
 import os
@@ -10,9 +10,10 @@ import json
 import re
 import time
 import random
+import threading
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V42 - AGENTE DE ELITE MULTIMODAL (OLHOS E OUVIDOS)")
+print("🚀 IMPÉRIO DE SILÍCIO V43 - AGENTE DE ELITE (ASSÍNCRONO E MULTIMODAL)")
 
 app = Flask(__name__)
 
@@ -59,7 +60,7 @@ def init_db():
 
 init_db()
 
-# --- TRAVA 1: DELAY ANTI-BAN E STATUS "DIGITANDO..." ---
+# --- TRAVA 1: DELAY ANTI-BAN EM SEGUNDO PLANO ---
 def enviar_whatsapp(telefone, mensagem):
     try:
         url_presence = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-presence"
@@ -74,16 +75,13 @@ def enviar_whatsapp(telefone, mensagem):
 # --- MÓDULO DE AUDIÇÃO: INTEGRAÇÃO WHISPER ---
 def transcrever_audio(audio_url):
     try:
-        # 1. Baixar o áudio da Z-API
         resposta_audio = requests.get(audio_url, timeout=15)
         if resposta_audio.status_code != 200: return None
         
-        # 2. Salvar arquivo temporário no servidor
         caminho_temp = f"/tmp/audio_paciente_{random.randint(1000,9999)}.ogg"
         with open(caminho_temp, 'wb') as f:
             f.write(resposta_audio.content)
         
-        # 3. Enviar para a OpenAI (Whisper)
         url_whisper = "https://api.openai.com/v1/audio/transcriptions"
         headers_whisper = {"Authorization": f"Bearer {OPENAI_KEY}"}
         
@@ -95,7 +93,6 @@ def transcrever_audio(audio_url):
             }
             res_whisper = requests.post(url_whisper, headers=headers_whisper, files=files, timeout=20)
         
-        # 4. Limpar o servidor
         if os.path.exists(caminho_temp): os.remove(caminho_temp)
             
         if res_whisper.status_code == 200:
@@ -106,7 +103,7 @@ def transcrever_audio(audio_url):
         return None
 
 # =========================
-# 🧠 CÉREBRO GPT-4o SÊNIOR (VISÃO E AUDIÇÃO)
+# 🧠 CÉREBRO GPT-4o SÊNIOR
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados, media_url=None):
     url = "https://api.openai.com/v1/chat/completions"
@@ -134,8 +131,8 @@ HORÁRIOS DISPONÍVEIS: {vagas_txt}
 REGRAS DE OURO DA BLINDAGEM (OBRIGATÓRIO):
 1. CONTROLE DE FLUXO: NUNCA mande uma mensagem sem uma pergunta no final, exceto no estado ENCERRADO. Você lidera a conversa.
 2. FUGA DE ASSUNTO: Se o paciente falar sobre política, esportes, clima, culinária ou qualquer coisa fora da odontologia, CORTE IMEDIATAMENTE e educadamente.
-3. LIMITES MÉDICOS E VISUAIS: Se o paciente enviar uma IMAGEM, diga o que você está vendo de forma empática, mas alerte que "apenas o dentista pode dar um diagnóstico final na avaliação presencial".
-4. FIDELIDADE DE DADOS: NUNCA altere ou questione um horário que já esteja definido nos "DADOS DO PACIENTE" a menos que o cliente peça explicitamente para reagendar. Confie no histórico.
+3. LIMITES MÉDICOS E VISUAIS: Se o paciente enviar uma IMAGEM, diga o que você está vendo, mas alerte que "apenas o dentista pode dar um diagnóstico final na avaliação presencial".
+4. FIDELIDADE DE DADOS: NUNCA altere ou questione um horário que já esteja definido nos "DADOS DO PACIENTE". Confie no histórico.
 
 SUA MISSÃO EXATA AGORA:
 {instrucao_atual}
@@ -148,10 +145,7 @@ Retorne APENAS um JSON:
 }}"""
 
     if media_url:
-        conteudo_usuario = [
-            {"type": "text", "text": mensagem_paciente},
-            {"type": "image_url", "image_url": {"url": media_url}}
-        ]
+        conteudo_usuario = [{"type": "text", "text": mensagem_paciente}, {"type": "image_url", "image_url": {"url": media_url}}]
     else:
         conteudo_usuario = mensagem_paciente
 
@@ -179,24 +173,23 @@ def webhook():
         
         telefone = data.get("phone", "").split("@")[0]
         
-        # --- VERIFICA SE É ÁUDIO, IMAGEM OU TEXTO ---
         media_url = None
         if "audio" in data and "audioUrl" in data["audio"]:
             audio_url = data["audio"]["audioUrl"]
             transcricao = transcrever_audio(audio_url)
             if transcricao:
-                msg = f"🎤 [ÁUDIO DO PACIENTE TRANSCRITO]: {transcricao}"
+                msg = f"🎤 [ÁUDIO TRANSCRITO]: {transcricao}"
             else:
-                msg = "🎤 [Áudio recebido, mas falhou a transcrição. Peça educadamente para o paciente digitar.]"
+                msg = f"🎤 [FALHA NO ÁUDIO]: {audio_url[-15:]}"
         elif "image" in data and "imageUrl" in data["image"]:
             media_url = data["image"]["imageUrl"]
-            msg = "📸 [O paciente enviou a imagem anexa. Analise a imagem e conecte com o atendimento]."
+            msg = f"📸 [IMAGEM RECEBIDA]: {media_url[-20:]} Analise a imagem e conecte com o atendimento."
         else:
             msg = data.get("text", {}).get("message", "") if isinstance(data.get("text"), dict) else str(data.get("message", ""))
         
         msg_clean, msg_lower = msg.strip(), msg.strip().lower()
 
-        if not telefone or (not msg_clean and not media_url): return "OK", 200
+        if not telefone or not msg_clean: return "OK", 200
 
         conn = conectar(); cur = conn.cursor()
         cur.execute("SELECT estado, sintoma, ultima_msg FROM sessoes WHERE telefone=%s", (telefone,))
@@ -206,12 +199,13 @@ def webhook():
             estado, dados_acumulados = "TRIAGEM", "Nenhum dado ainda."
             cur.execute("INSERT INTO sessoes (telefone, estado, sintoma, ultima_msg) VALUES (%s, %s, %s, %s)", (telefone, estado, dados_acumulados, msg_clean))
             conn.commit()
-            enviar_whatsapp(telefone, f"Olá! Seja muito bem-vindo(a) à {NOME_CLINICA}. Meu nome é {NOME_ATENDENTE} e sou a sua concierge digital. Como posso ajudar a cuidar do seu sorriso hoje?")
+            threading.Thread(target=enviar_whatsapp, args=(telefone, f"Olá! Seja muito bem-vindo(a) à {NOME_CLINICA}. Meu nome é {NOME_ATENDENTE} e sou a sua concierge digital. Como posso ajudar a cuidar do seu sorriso hoje?")).start()
             return "OK", 200
         else:
             estado, dados_acumulados, ultima_msg = row
 
-        if msg_clean == ultima_msg and not media_url and "audio" not in data: return "OK", 200
+        # --- TRAVA DE REPETIÇÃO BLINDADA ---
+        if msg_clean == ultima_msg: return "OK", 200
 
         if estado == "ENCERRADO":
             encerramentos = ["ok", "obrigado", "obrigada", "valeu", "tchau", "ótimo", "perfeito", "joia", "beleza"]
@@ -225,13 +219,12 @@ def webhook():
 
         emergencias = ["dor insuportável", "sangramento forte", "socorro", "dor extrema"]
         if any(p in msg_lower for p in emergencias) and not media_url:
-            enviar_whatsapp(telefone, "🚨 Identifiquei sinais de urgência. Para casos de dor extrema ou sangramento forte, dirija-se imediatamente a um pronto atendimento odontológico.")
+            threading.Thread(target=enviar_whatsapp, args=(telefone, "🚨 Identifiquei sinais de urgência. Para casos de dor extrema ou sangramento forte, dirija-se imediatamente a um pronto atendimento odontológico.")).start()
             return "OK", 200
 
-        # --- ANÁLISE IA ---
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, dados_acumulados, media_url)
         if not analise:
-            enviar_whatsapp(telefone, "Tivemos uma pequena instabilidade de rede. Você poderia repetir sua última mensagem, por favor?")
+            threading.Thread(target=enviar_whatsapp, args=(telefone, "Tivemos uma pequena instabilidade de rede. Você poderia repetir sua última mensagem, por favor?")).start()
             return "OK", 200
 
         resposta = analise.get("resposta_para_paciente", "Pode me explicar melhor?")
@@ -271,7 +264,9 @@ def webhook():
 
         cur.execute("UPDATE sessoes SET estado=%s, sintoma=%s, ultima_msg=%s WHERE telefone=%s", (novo_estado, novos_dados, msg_clean, telefone))
         conn.commit()
-        enviar_whatsapp(telefone, resposta)
+        
+        # --- O PULO DO GATO: Envia a mensagem em segundo plano! ---
+        threading.Thread(target=enviar_whatsapp, args=(telefone, resposta)).start()
 
     except Exception as e: print("Erro Webhook:", e)
     finally:
@@ -287,7 +282,7 @@ def reset():
     return "✅ RESET ODONTO SILÍCIO OK"
 
 @app.route('/')
-def home(): return "🚀 ODONTO SILÍCIO V42 ATIVA (VISÃO E AUDIÇÃO)"
+def home(): return "🚀 ODONTO SILÍCIO V43 ATIVA (BLINDADA CONTRA REPETIÇÕES)"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
