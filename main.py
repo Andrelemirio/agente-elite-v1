@@ -1,6 +1,6 @@
 # ============================================
-# 🚀 IMPÉRIO DE SILÍCIO V44 — ODONTO SILÍCIO (AGENTE DE ELITE)
-# VISÃO, WHISPER, ESTRUTURA JSON E OLHO DE DEUS (LOGS PROFISSIONAIS)
+# 🚀 IMPÉRIO DE SILÍCIO V45 — ODONTO SILÍCIO (AGENTE DE ELITE)
+# VISÃO, WHISPER, ESTRUTURA JSON, OLHO DE DEUS E STATUS DE FUNIL
 # ============================================
 
 import os
@@ -14,7 +14,7 @@ import threading
 from datetime import datetime
 from flask import Flask, request
 
-print("🚀 IMPÉRIO DE SILÍCIO V44 - AGENTE DE ELITE (CAIXA-PRETA ATIVADA)")
+print("🚀 IMPÉRIO DE SILÍCIO V45 - AGENTE DE ELITE (STATUS DE FUNIL ATIVADO)")
 
 app = Flask(__name__)
 
@@ -56,7 +56,7 @@ def init_db():
                 id SERIAL PRIMARY KEY, hora TEXT, disponivel BOOLEAN DEFAULT TRUE
             )
         """)
-        # NOVO: Tabela do Olho de Deus (Logs Profissionais)
+        # Tabela do Olho de Deus (Logs Profissionais)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS historico_conversas (
                 id SERIAL PRIMARY KEY,
@@ -68,21 +68,30 @@ def init_db():
             )
         """)
         conn.commit()
+
+        # Hack do Arquiteto: Cria a coluna STATUS automaticamente se ela não existir
+        try:
+            cur.execute("ALTER TABLE historico_conversas ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'EM_ATENDIMENTO'")
+            conn.commit()
+        except Exception as alt_e:
+            conn.rollback()
+            print("Aviso na coluna status:", alt_e)
+
     except Exception as e: print("Erro DB:", e)
     finally:
         if conn: conn.close()
 
 init_db()
 
-# --- NOVO: FUNÇÃO PARA GRAVAR NO OLHO DE DEUS ---
-def registrar_log_conversa(telefone, estado, msg_cliente, resposta_ana):
+# --- FUNÇÃO PARA GRAVAR NO OLHO DE DEUS (AGORA COM STATUS DO FUNIL) ---
+def registrar_log_conversa(telefone, estado, msg_cliente, resposta_ana, status_funil="EM_ATENDIMENTO"):
     conn = None
     try:
         conn = conectar(); cur = conn.cursor()
         agora = datetime.now()
         cur.execute(
-            "INSERT INTO historico_conversas (telefone, data_hora, estado_momento, mensagem_cliente, resposta_ana) VALUES (%s, %s, %s, %s, %s)",
-            (telefone, agora, estado, msg_cliente, resposta_ana)
+            "INSERT INTO historico_conversas (telefone, data_hora, estado_momento, mensagem_cliente, resposta_ana, status) VALUES (%s, %s, %s, %s, %s, %s)",
+            (telefone, agora, estado, msg_cliente, resposta_ana, status_funil)
         )
         conn.commit()
     except Exception as e:
@@ -133,7 +142,7 @@ def transcrever_audio(audio_url):
         return None
 
 # =========================
-# 🧠 CÉREBRO GPT-4o SÊNIOR (AGORA COM SAÍDA JSON ESTRITA)
+# 🧠 CÉREBRO GPT-4o SÊNIOR (AGORA COM SAÍDA JSON ESTRITA E BLINDAGEM)
 # =========================
 def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados, media_url=None):
     url = "https://api.openai.com/v1/chat/completions"
@@ -144,15 +153,14 @@ def analisar_com_ia(mensagem_paciente, estado_atual, vagas_txt, dados_acumulados
         "STATUS_CONSULTA": "AÇÃO: Agradeça. FECHAMENTO: Pergunte se a consulta será PARTICULAR ou pelo PLANO de saúde. (novo_estado: FORMA_PAGAMENTO)",
         "FORMA_PAGAMENTO": f"AÇÃO: Ofereça APENAS os horários {vagas_txt}. FECHAMENTO: Pergunte 'Qual desses horários fica melhor para você?' (novo_estado: AGENDAMENTO)",
         "AGENDAMENTO": f"AÇÃO: SE o paciente escolheu um horário, confirme. FECHAMENTO: Peça o NOME COMPLETO (novo_estado: DADOS_NOME). SE não escolheu, ofereça os horários novamente (novo_estado: AGENDAMENTO).",
-        "DADOS_NOME": "AÇÃO: SE o paciente forneceu o nome, avise que o resto dos dados pode ser dado na recepção. FECHAMENTO: Peça o CPF para o cadastro base (novo_estado: DADOS_CPF). SE não, continue pedindo o nome (novo_estado: DADOS_NOME).",
-        "DADOS_CPF": "AÇÃO: Confirme que o horário está reservado. FECHAMENTO: Pergunte se há mais alguém para agendar ou se ficou alguma dúvida. (novo_estado: CONFIRMADO)",
+        "DADOS_NOME": "AÇÃO: SE o paciente forneceu o nome, avise que o resto dos dados pode ser dado na recepção. FECHAMENTO: Peça o CPF (11 dígitos) para o cadastro base (novo_estado: DADOS_CPF). SE não, continue pedindo o nome (novo_estado: DADOS_NOME).",
+        "DADOS_CPF": "AÇÃO: Verifique se o CPF tem 11 dígitos. SE NÃO tiver, peça para corrigir (novo_estado: DADOS_CPF). SE TIVER, confirme que o horário está reservado. FECHAMENTO: Pergunte se há mais alguém para agendar ou se ficou alguma dúvida. (novo_estado: CONFIRMADO)",
         "CONFIRMADO": "AÇÃO: SE o paciente disser NÃO, OBRIGADO, ou se despedir, encerre sem perguntas (novo_estado: ENCERRADO).",
         "ENCERRADO": "AÇÃO: O atendimento acabou. Apenas seja educado, NÃO faça perguntas, NÃO puxe assunto. (novo_estado: ENCERRADO)"
     }
     
     instrucao_atual = instrucoes.get(estado_atual, "AÇÃO: Conduza para o agendamento.")
 
-    # --- NOVO: REGRAS RÍGIDAS DE JSON PARA O RESUMO ---
     prompt_sistema = f"""Você é {NOME_ATENDENTE}, a Concierge de Elite da clínica {NOME_CLINICA}.
 
 DADOS DO PACIENTE (EM JSON): {dados_acumulados}
@@ -163,7 +171,10 @@ REGRAS DE OURO DA BLINDAGEM (OBRIGATÓRIO):
 1. CONTROLE DE FLUXO: NUNCA mande uma mensagem sem uma pergunta no final, exceto no estado ENCERRADO. Você lidera a conversa.
 2. FUGA DE ASSUNTO: Se o paciente falar sobre política, esportes, clima ou fora da odontologia, CORTE IMEDIATAMENTE e educadamente.
 3. LIMITES MÉDICOS E VISUAIS: Se o paciente enviar uma IMAGEM, diga o que você está vendo, mas alerte que "apenas o dentista pode dar um diagnóstico final na avaliação presencial".
-4. FIDELIDADE DE DADOS: NUNCA altere um horário que já esteja definido nos "DADOS DO PACIENTE". Confie no histórico.
+4. VALIDAÇÃO DE CPF: O CPF deve ter 11 dígitos. Se o paciente enviar faltando ou sobrando números, responda: "Parece que faltou algum número no seu CPF. Pode conferir e me mandar novamente? São 11 dígitos no total."
+5. VALIDAÇÃO DE TELEFONE: Garanta que o paciente entenda a necessidade do DDD na ficha, caso mencione outro contato.
+6. PREPARAÇÃO CALENDÁRIO: Ao fechar o agendamento, NUNCA prometa sem antes dizer: "Vou verificar a disponibilidade na nossa agenda e já te confirmo..."
+7. STATUS DO FUNIL: Identifique em que fase o cliente está para classificar no JSON ("EM_ATENDIMENTO", "INTERESSADO" ou "AGENDADO").
 
 SUA MISSÃO EXATA AGORA:
 {instrucao_atual}
@@ -172,6 +183,7 @@ Retorne APENAS um objeto JSON estrito com esta estrutura exata:
 {{
     "resposta_para_paciente": "Sua resposta natural e persuasiva",
     "novo_estado": "O estado exato após sua análise",
+    "status_funil": "O status exato (EM_ATENDIMENTO, INTERESSADO ou AGENDADO)",
     "resumo_dados": {{
         "nome": "Extraia o nome ou null",
         "cpf": "Extraia o CPF ou null",
@@ -238,8 +250,8 @@ def webhook():
             saudacao = f"Olá! Seja muito bem-vindo(a) à {NOME_CLINICA}. Meu nome é {NOME_ATENDENTE} e sou a sua concierge digital. Como posso ajudar a cuidar do seu sorriso hoje?"
             threading.Thread(target=enviar_whatsapp, args=(telefone, saudacao)).start()
             
-            # --- SALVA A PRIMEIRA MENSAGEM NO LOG ---
-            threading.Thread(target=registrar_log_conversa, args=(telefone, estado, msg_clean, saudacao)).start()
+            # SALVA A PRIMEIRA MENSAGEM NO LOG
+            threading.Thread(target=registrar_log_conversa, args=(telefone, estado, msg_clean, saudacao, "EM_ATENDIMENTO")).start()
             return "OK", 200
         else:
             estado, dados_acumulados, ultima_msg = row
@@ -260,7 +272,7 @@ def webhook():
         if any(p in msg_lower for p in emergencias) and not media_url:
             msg_emergencia = "🚨 Identifiquei sinais de urgência. Para casos de dor extrema ou sangramento forte, dirija-se imediatamente a um pronto atendimento odontológico."
             threading.Thread(target=enviar_whatsapp, args=(telefone, msg_emergencia)).start()
-            threading.Thread(target=registrar_log_conversa, args=(telefone, estado, msg_clean, msg_emergencia)).start()
+            threading.Thread(target=registrar_log_conversa, args=(telefone, estado, msg_clean, msg_emergencia, "EM_ATENDIMENTO")).start()
             return "OK", 200
 
         analise = analisar_com_ia(msg_clean, estado, vagas_txt, dados_acumulados, media_url)
@@ -271,8 +283,8 @@ def webhook():
 
         resposta = analise.get("resposta_para_paciente", "Pode me explicar melhor?")
         novo_estado = analise.get("novo_estado", estado)
+        status_funil = analise.get("status_funil", "EM_ATENDIMENTO")
         
-        # --- NOVO: GARANTE QUE O RESUMO SEJA SALVO COMO JSON STRING ---
         resumo_json = analise.get("resumo_dados", {})
         novos_dados = json.dumps(resumo_json)
 
@@ -291,9 +303,14 @@ def webhook():
                 novo_estado = "AGENDAMENTO"
 
         elif estado == "DADOS_CPF" and not media_url:
-            if len(re.sub(r'\D', '', msg_clean)) >= 11:
+            cpf_numeros = re.sub(r'\D', '', msg_clean)
+            if len(cpf_numeros) == 11:
                 novo_estado = "CONFIRMADO"
+                status_funil = "AGENDADO"
                 resposta = "CPF recebido com sucesso! Seu agendamento está confirmado. Há mais alguém da família que deseja agendar ou ficou alguma dúvida?"
+            else:
+                novo_estado = "DADOS_CPF"
+                resposta = "Parece que o CPF está incompleto ou tem números a mais. Pode conferir e me mandar novamente os 11 dígitos, por favor?"
 
         elif ordem_estados.get(novo_estado, 0) < ordem_estados.get(estado, 0):
             if estado == "CONFIRMADO" and novo_estado in ["AGENDAMENTO", "TRIAGEM", "FORMA_PAGAMENTO"]:
@@ -311,9 +328,9 @@ def webhook():
         cur.execute("UPDATE sessoes SET estado=%s, sintoma=%s, ultima_msg=%s WHERE telefone=%s", (novo_estado, novos_dados, msg_clean, telefone))
         conn.commit()
         
-        # --- O PULO DO GATO: Envia a mensagem e SALVA O LOG EM SEGUNDO PLANO ---
+        # O PULO DO GATO: Envia a mensagem e SALVA O LOG EM SEGUNDO PLANO COM STATUS
         threading.Thread(target=enviar_whatsapp, args=(telefone, resposta)).start()
-        threading.Thread(target=registrar_log_conversa, args=(telefone, estado, msg_clean, resposta)).start()
+        threading.Thread(target=registrar_log_conversa, args=(telefone, estado, msg_clean, resposta, status_funil)).start()
 
     except Exception as e: print("Erro Webhook:", e)
     finally:
@@ -329,7 +346,7 @@ def reset():
     return "✅ RESET ODONTO SILÍCIO OK (LOGS LIMPOS)"
 
 @app.route('/')
-def home(): return "🚀 ODONTO SILÍCIO V44 ATIVA (CAIXA-PRETA LIGADA)"
+def home(): return "🚀 ODONTO SILÍCIO V45 ATIVA (STATUS DE FUNIL E BLINDAGEM ATIVADOS)"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
